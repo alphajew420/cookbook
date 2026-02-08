@@ -1,182 +1,186 @@
-# Cookbook App - Backend API
+# Cookbook App Backend - Setup Instructions
 
-A powerful Node.js backend API for the Cookbook App, featuring AI-powered recipe extraction from cookbook images and intelligent fridge inventory management using Google Gemini AI.
+A Node.js backend API for the Cookbook App with AI-powered recipe extraction and fridge inventory management.
 
-## 🚀 Features
+## Prerequisites
 
-- **AI-Powered Recipe Extraction**: Scan cookbook pages and automatically extract recipes, ingredients, and instructions using Google Gemini Vision API
-- **Fridge Inventory Management**: Scan your fridge to identify and catalog food items
-- **Intelligent Recipe Matching**: Find recipes you can make with available ingredients
-- **User Authentication**: Secure JWT-based authentication
-- **Cloud Storage**: Image storage using AWS S3
-- **Caching**: Redis-based caching for optimal performance
-- **Rate Limiting**: Protect API from abuse
-- **Comprehensive Error Handling**: Detailed error responses with proper HTTP status codes
+- **Railway Account** ([Sign up here](https://railway.app))
+- **Google Gemini API Key** ([Get one here](https://makersuite.google.com/app/apikey))
+- **AWS S3 Bucket** (for image storage)
+- **GitHub Account** (to connect your repo to Railway)
 
-## 📋 Prerequisites
+## Quick Setup
 
-- Node.js 18+ and npm 9+
-- PostgreSQL 14+
-- Redis 7+
-- AWS S3 account (or compatible storage)
-- Google Gemini API key
-
-## 🛠️ Installation
-
-### 1. Clone the repository
-
-```bash
-git clone <repository-url>
-cd cookbook-app-backend
-```
-
-### 2. Install dependencies
+### 1. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Set up environment variables
+### 2. Push to GitHub
 
-Copy the example environment file and configure it:
+Make sure your code is on GitHub:
 
 ```bash
-cp .env.example .env
+git add .
+git commit -m "Initial commit"
+git push origin main
 ```
 
-Edit `.env` with your configuration:
+**Important:** Ensure `package-lock.json` is committed (remove it from `.gitignore` if present)
 
-```env
-# Server
-NODE_ENV=development
-PORT=3000
+### 3. Deploy to Railway
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/cookbook_db
+1. Go to [Railway](https://railway.app) and sign in
+2. Click **"New Project"**
+3. Select **"Deploy from GitHub repo"**
+4. Choose your repository
+5. Railway will auto-detect the Dockerfile
 
-# Redis
-REDIS_URL=redis://localhost:6379
+### 4. Add PostgreSQL Database
 
-# JWT
-JWT_SECRET=your_secure_secret_key_here
-JWT_EXPIRATION=1h
+1. In your Railway project, click **"New"**
+2. Select **"Database"** → **"Add PostgreSQL"**
+3. Railway will automatically create a PostgreSQL database
+4. The `DATABASE_URL` environment variable will be auto-added to your service
 
-# Google Gemini
-GEMINI_API_KEY=your_gemini_api_key_here
+### 5. Add Redis
 
-# AWS S3
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+1. In your Railway project, click **"New"**
+2. Select **"Database"** → **"Add Redis"**
+3. Railway will automatically create a Redis instance
+4. The `REDIS_URL` environment variable will be auto-added to your service
+
+### 6. Configure Environment Variables
+
+In your Railway service settings, add these environment variables:
+
+**Required Variables:**
+```
+NODE_ENV=production
+JWT_SECRET=<generate-random-64-char-string>
+REFRESH_TOKEN_SECRET=<generate-random-64-char-string>
+GEMINI_API_KEY=your-gemini-api-key
+AWS_ACCESS_KEY_ID=your-aws-access-key
+AWS_SECRET_ACCESS_KEY=your-aws-secret-key
 AWS_REGION=us-east-1
-S3_BUCKET_NAME=cookbook-app-images
+S3_BUCKET_NAME=your-bucket-name
 ```
 
-### 4. Set up the database
-
-Create a PostgreSQL database:
-
+**Generate JWT secrets** (run locally):
 ```bash
-createdb cookbook_db
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-Run migrations:
+**Note:** `DATABASE_URL` and `REDIS_URL` are automatically set by Railway when you add the databases.
 
+### 7. Run Database Migrations
+
+After deployment, run migrations in Railway:
+
+1. Go to your service in Railway
+2. Click on **"Settings"** → **"Deploy"**
+3. Add a **"Custom Start Command"** (one-time):
+   ```
+   npm run migrate && node src/server.js
+   ```
+
+Or run manually in Railway's terminal:
 ```bash
 npm run migrate
 ```
 
-### 5. Start the server
+### 8. Deploy!
 
-Development mode (with auto-reload):
+Railway will automatically deploy your app. Once deployed, you'll get a URL like:
+```
+https://your-app.up.railway.app
+```
+
+## Verify Deployment
+
+### 1. Health Check
+
+Replace `your-app.up.railway.app` with your actual Railway URL:
 
 ```bash
-npm run dev
+curl https://your-app.up.railway.app/health
 ```
 
-Production mode:
+Expected response:
+```json
+{
+  "success": true,
+  "message": "Cookbook API is running",
+  "timestamp": "2026-02-07T...",
+  "environment": "production"
+}
+```
+
+### 2. Register a Test User
 
 ```bash
-npm start
-```
-
-## 📚 API Documentation
-
-### Base URL
-
-- **Development**: `http://localhost:3000/api`
-- **Production**: `https://your-domain.com/api`
-
-### Authentication
-
-Most endpoints require JWT authentication. Include the token in the Authorization header:
-
-```
-Authorization: Bearer <your_jwt_token>
-```
-
-### Endpoints
-
-#### Authentication
-
-- `POST /auth/register` - Register a new user
-- `POST /auth/login` - Login and get JWT token
-- `GET /auth/profile` - Get current user profile
-
-#### Scanning
-
-- `POST /scan/cookbook` - Scan a cookbook page (multipart/form-data)
-- `POST /scan/fridge` - Scan fridge contents (multipart/form-data)
-- `GET /scan/cookbook/:scanId/status` - Get scan status
-
-#### Cookbooks
-
-- `GET /cookbooks` - Get all user's cookbooks
-- `GET /cookbook/:id` - Get specific cookbook
-- `GET /cookbook/:id/recipes` - Get all recipes from cookbook
-- `PUT /cookbook/:id` - Update cookbook
-- `DELETE /cookbook/:id` - Delete cookbook
-
-#### Recipes
-
-- `GET /recipe/:id` - Get specific recipe
-- `POST /recipes/match` - Match recipes with fridge ingredients
-
-#### Fridge Inventory
-
-- `GET /fridge/inventory` - Get fridge inventory
-- `POST /fridge/inventory` - Add items manually
-- `PUT /fridge/item/:id` - Update fridge item
-- `DELETE /fridge/item/:id` - Delete fridge item
-- `DELETE /fridge/inventory` - Clear entire inventory
-
-### Example Requests
-
-#### Register a User
-
-```bash
-curl -X POST http://localhost:3000/api/auth/register \
+curl -X POST https://your-app.up.railway.app/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com",
-    "password": "securePassword123",
-    "name": "John Doe"
+    "email": "test@example.com",
+    "password": "Test123456!",
+    "name": "Test User"
   }'
 ```
 
-#### Scan a Cookbook Page
+Save the `token` from the response!
+
+### 3. Test Authentication
+
+```bash
+curl https://your-app.up.railway.app/api/auth/profile \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user
+- `GET /api/auth/profile` - Get user profile
+
+### Scanning
+- `POST /api/scan/cookbook` - Scan cookbook page (multipart/form-data)
+- `POST /api/scan/fridge` - Scan fridge contents (multipart/form-data)
+
+### Cookbooks
+- `GET /api/cookbooks` - List all cookbooks
+- `GET /api/cookbook/:id` - Get cookbook details
+- `GET /api/cookbook/:id/recipes` - Get cookbook recipes
+- `PUT /api/cookbook/:id` - Update cookbook
+- `DELETE /api/cookbook/:id` - Delete cookbook
+
+### Recipes
+- `GET /api/recipe/:id` - Get recipe details
+- `POST /api/recipes/match` - Match recipes with fridge ingredients
+
+### Fridge Inventory
+- `GET /api/fridge/inventory` - Get fridge inventory
+- `POST /api/fridge/inventory` - Add items manually
+- `PUT /api/fridge/item/:id` - Update item
+- `DELETE /api/fridge/item/:id` - Delete item
+- `DELETE /api/fridge/inventory` - Clear entire inventory
+
+## Example: Scan a Cookbook
 
 ```bash
 curl -X POST http://localhost:3000/api/scan/cookbook \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -F "image=@/path/to/cookbook-page.jpg" \
   -F "cookbookName=Italian Classics"
 ```
 
-#### Match Recipes
+## Example: Match Recipes
 
 ```bash
 curl -X POST http://localhost:3000/api/recipes/match \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "minMatchPercentage": 75,
@@ -184,163 +188,102 @@ curl -X POST http://localhost:3000/api/recipes/match \
   }'
 ```
 
-## 🏗️ Project Structure
+## Local Development (Optional)
 
-```
-cookbook-app-backend/
-├── src/
-│   ├── controllers/        # Request handlers
-│   │   ├── authController.js
-│   │   ├── scanController.js
-│   │   ├── cookbookController.js
-│   │   ├── recipeController.js
-│   │   ├── fridgeController.js
-│   │   └── matchController.js
-│   ├── database/           # Database configuration
-│   │   ├── db.js
-│   │   ├── schema.sql
-│   │   └── migrate.js
-│   ├── middleware/         # Express middleware
-│   │   ├── auth.js
-│   │   ├── validation.js
-│   │   ├── errorHandler.js
-│   │   ├── upload.js
-│   │   └── rateLimiter.js
-│   ├── routes/            # API routes
-│   │   ├── auth.js
-│   │   ├── scan.js
-│   │   ├── cookbooks.js
-│   │   ├── recipes.js
-│   │   └── fridge.js
-│   ├── services/          # Business logic
-│   │   └── gemini.js
-│   ├── utils/             # Utilities
-│   │   ├── logger.js
-│   │   ├── redis.js
-│   │   └── s3.js
-│   └── server.js          # Main application file
-├── logs/                  # Application logs
-├── .env.example          # Example environment variables
-├── .gitignore
-├── package.json
-└── README.md
-```
+If you want to run the app locally for development:
 
-## 🧪 Testing
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 14+
+- Redis 7+
 
-Run tests:
+### Setup
+1. Install dependencies: `npm install`
+2. Copy `.env.example` to `.env` and configure
+3. Create database: `createdb cookbook_db`
+4. Run migrations: `npm run migrate`
+5. Start server: `npm run dev`
 
+The server will run at `http://localhost:3000`
+
+## Troubleshooting
+
+### Railway deployment fails with "npm ci" error
+**Solution:** Make sure `package-lock.json` is committed to your repo
 ```bash
-npm test
+# Remove package-lock.json from .gitignore if present
+# Then commit it
+git add package-lock.json
+git commit -m "Add package-lock.json"
+git push origin main
 ```
 
-Run tests with coverage:
+### Database connection error on Railway
+**Solution:** 
+- Make sure you added PostgreSQL database in Railway
+- The `DATABASE_URL` variable should be automatically set
+- Check Railway logs for specific error messages
 
-```bash
-npm test -- --coverage
+### Redis connection error on Railway
+**Solution:**
+- Make sure you added Redis in Railway
+- The `REDIS_URL` variable should be automatically set
+- Redis is optional for basic functionality
+
+### Migrations not running
+**Solution:**
+- Run migrations manually in Railway's terminal
+- Or use custom start command: `npm run migrate && node src/server.js`
+
+### Environment variables not working
+**Solution:**
+- Check all required variables are set in Railway dashboard
+- Variables are case-sensitive
+- Redeploy after adding new variables
+
+## Project Structure
+
+```
+src/
+├── controllers/      # Request handlers
+├── database/         # Database config and migrations
+├── middleware/       # Express middleware
+├── routes/           # API routes
+├── services/         # Business logic (Gemini AI)
+├── utils/            # Utilities (logger, Redis, S3)
+└── server.js         # Main application
 ```
 
-## 🔒 Security
+## Technology Stack
 
-- JWT-based authentication
-- Password hashing with bcrypt
-- Rate limiting on all endpoints
-- Helmet.js for security headers
-- Input validation with Joi
-- SQL injection prevention with parameterized queries
-- File upload validation and size limits
+- **Runtime**: Node.js 18+
+- **Framework**: Express.js
+- **Database**: PostgreSQL
+- **Cache**: Redis
+- **AI**: Google Gemini 1.5 Pro
+- **Storage**: AWS S3
+- **Auth**: JWT
 
-## 📊 Performance
+## Features
 
-- Redis caching for frequently accessed data
-- Database connection pooling
-- Image optimization before AI processing
-- Efficient database queries with indexes
+- ✅ AI-powered recipe extraction from cookbook images
+- ✅ Fridge inventory scanning and management
+- ✅ Intelligent recipe matching algorithm
+- ✅ JWT authentication
+- ✅ Rate limiting
+- ✅ Input validation
+- ✅ Error handling
+- ✅ Caching with Redis
+- ✅ Image storage with S3
+- ✅ Comprehensive logging
 
-## 🐛 Error Handling
+## License
 
-All errors follow a consistent format:
+MIT
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error message",
-    "details": "Additional context",
-    "timestamp": "2024-01-20T15:45:00Z",
-    "requestId": "uuid"
-  }
-}
-```
+## Support
 
-## 📝 Logging
-
-Logs are written to:
-- Console (development)
-- `logs/combined.log` (all logs)
-- `logs/error.log` (errors only)
-
-## 🚀 Deployment
-
-### Environment Variables
-
-Ensure all production environment variables are set:
-
-- Set `NODE_ENV=production`
-- Use strong `JWT_SECRET`
-- Configure production database
-- Set up production Redis instance
-- Configure AWS S3 bucket
-- Set appropriate CORS origins
-
-### Database Migration
-
-Run migrations on production:
-
-```bash
-NODE_ENV=production npm run migrate
-```
-
-### Process Management
-
-Use PM2 for process management:
-
-```bash
-npm install -g pm2
-pm2 start src/server.js --name cookbook-api
-pm2 save
-pm2 startup
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## 📄 License
-
-MIT License - see LICENSE file for details
-
-## 🆘 Support
-
-For issues and questions:
-- Create an issue on GitHub
-- Email: support@cookbookapp.com
-
-## 🎯 Roadmap
-
-- [ ] Ingredient substitution suggestions
-- [ ] Shopping list generation
-- [ ] Meal planning features
-- [ ] Recipe sharing between users
-- [ ] Nutritional information extraction
-- [ ] Multi-language support
-- [ ] Voice input for ingredients
-- [ ] Barcode scanning for packaged items
+For issues or questions, open an issue on GitHub.
 
 ---
 

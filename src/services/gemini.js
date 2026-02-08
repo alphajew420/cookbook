@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-1.5-pro' });
+const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-pro-vision' });
 
 // Prompts
 const COOKBOOK_PROMPT = `You are a recipe extraction assistant. Analyze this cookbook page image and extract ALL recipes visible.
