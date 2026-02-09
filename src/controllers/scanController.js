@@ -72,21 +72,56 @@ const scanCookbook = async (req, res, next) => {
     // Store recipes in database
     const result = await transaction(async (client) => {
       let currentCookbookId = cookbookId;
+      let cookbook = null;
       
       // Create or get cookbook
       if (!currentCookbookId) {
         const name = cookbookName || aiResult.data.bookTitle || 'My Cookbook';
-        const cookbookResult = await client.query(
-          `INSERT INTO cookbooks (user_id, name, scanned_pages)
-           VALUES ($1, $2, 1)
-           RETURNING id, name`,
+        
+        // Check if cookbook with this name already exists for this user
+        const existingCookbook = await client.query(
+          'SELECT id, name, scanned_pages, cover_image_url, created_at FROM cookbooks WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
           [userId, name]
         );
-        currentCookbookId = cookbookResult.rows[0].id;
+        
+        if (existingCookbook.rows.length > 0) {
+          // Use existing cookbook
+          cookbook = existingCookbook.rows[0];
+          currentCookbookId = cookbook.id;
+          
+          // Increment scanned pages
+          await client.query(
+            'UPDATE cookbooks SET scanned_pages = scanned_pages + 1, updated_at = NOW() WHERE id = $1',
+            [currentCookbookId]
+          );
+          
+          logger.info('Adding page to existing cookbook', {
+            userId,
+            cookbookId: currentCookbookId,
+            cookbookName: name,
+            previousPages: cookbook.scanned_pages,
+          });
+        } else {
+          // Create new cookbook
+          const cookbookResult = await client.query(
+            `INSERT INTO cookbooks (user_id, name, scanned_pages, cover_image_url)
+             VALUES ($1, $2, 1, $3)
+             RETURNING id, name, scanned_pages, cover_image_url, created_at`,
+            [userId, name, imageUrl]
+          );
+          cookbook = cookbookResult.rows[0];
+          currentCookbookId = cookbook.id;
+          
+          logger.info('Created new cookbook', {
+            userId,
+            cookbookId: currentCookbookId,
+            cookbookName: name,
+          });
+        }
       } else {
         // Verify cookbook belongs to user
         const cookbookCheck = await client.query(
-          'SELECT id FROM cookbooks WHERE id = $1 AND user_id = $2',
+          'SELECT id, name, scanned_pages, cover_image_url, created_at FROM cookbooks WHERE id = $1 AND user_id = $2',
           [currentCookbookId, userId]
         );
         
@@ -94,9 +129,11 @@ const scanCookbook = async (req, res, next) => {
           throw new NotFoundError('Cookbook not found');
         }
         
+        cookbook = cookbookCheck.rows[0];
+        
         // Increment scanned pages
         await client.query(
-          'UPDATE cookbooks SET scanned_pages = scanned_pages + 1 WHERE id = $1',
+          'UPDATE cookbooks SET scanned_pages = scanned_pages + 1, updated_at = NOW() WHERE id = $1',
           [currentCookbookId]
         );
       }
@@ -156,8 +193,14 @@ const scanCookbook = async (req, res, next) => {
         });
       }
       
-      return { cookbookId: currentCookbookId, recipes };
+      return { cookbookId: currentCookbookId, cookbook, recipes };
     });
+    
+    // Get updated cookbook info
+    const cookbookInfo = await query(
+      'SELECT id, name, scanned_pages, cover_image_url, created_at, updated_at FROM cookbooks WHERE id = $1',
+      [result.cookbookId]
+    );
     
     // Invalidate cache
     await cache.delPattern(`user:${userId}:*`);
@@ -166,17 +209,26 @@ const scanCookbook = async (req, res, next) => {
       userId,
       scanId,
       recipesFound: result.recipes.length,
+      cookbookId: result.cookbookId,
     });
     
     res.status(200).json({
       success: true,
       data: {
         scanId,
-        cookbookId: result.cookbookId,
+        cookbook: {
+          id: cookbookInfo.rows[0].id,
+          name: cookbookInfo.rows[0].name,
+          scannedPages: cookbookInfo.rows[0].scanned_pages,
+          coverImageUrl: cookbookInfo.rows[0].cover_image_url,
+          createdAt: cookbookInfo.rows[0].created_at,
+          updatedAt: cookbookInfo.rows[0].updated_at,
+        },
         recipesFound: result.recipes.length,
         recipes: result.recipes,
         processingTime: aiResult.processingTime,
         imageUrl,
+        message: `Page processed successfully. ${result.recipes.length} recipe(s) found.`,
       },
     });
   } catch (error) {
