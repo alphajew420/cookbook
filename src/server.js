@@ -59,6 +59,23 @@ app.get('/health', (req, res) => {
   });
 });
 
+// One-time migration endpoint (remove after use)
+app.post('/migrate', async (req, res) => {
+  try {
+    const migrate = require('./database/migrate');
+    await migrate();
+    res.status(200).json({
+      success: true,
+      message: 'Migration completed successfully',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scan', scanRoutes);
