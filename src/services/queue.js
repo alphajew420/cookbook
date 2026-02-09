@@ -2,13 +2,16 @@ const Bull = require('bull');
 const logger = require('../utils/logger');
 
 // Redis connection config
-const redisConfig = {
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
-  },
-};
+// Use REDIS_URL if available (Railway format), otherwise use individual vars
+const redisConfig = process.env.REDIS_URL
+  ? process.env.REDIS_URL
+  : {
+      redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT) || 6379,
+        password: process.env.REDIS_PASSWORD || undefined,
+      },
+    };
 
 // Create queues
 const cookbookQueue = new Bull('cookbook-scans', redisConfig);
