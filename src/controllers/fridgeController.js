@@ -21,7 +21,7 @@ const getInventory = async (req, res, next) => {
     
     // Build query
     let queryText = `
-      SELECT id, name, quantity, category, freshness, packaging, confidence, expiry_date, created_at, updated_at
+      SELECT id, name, quantity, category, freshness, packaging, confidence, expiry_date, scan_job_id, created_at, updated_at
       FROM fridge_items
       WHERE user_id = $1
     `;
@@ -62,6 +62,7 @@ const getInventory = async (req, res, next) => {
           packaging: item.packaging,
           confidence: item.confidence,
           expiryDate: item.expiry_date,
+          scanJobId: item.scan_job_id,
           createdAt: item.created_at,
           updatedAt: item.updated_at,
         })),

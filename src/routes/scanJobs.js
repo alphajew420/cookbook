@@ -4,6 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const {
   getScanJobs,
   getScanJob,
+  getScanJobItems,
   retryScanJob,
   deleteScanJob,
 } = require('../controllers/scanJobsController');
@@ -16,6 +17,9 @@ router.get('/', getScanJobs);
 
 // Get single scan job
 router.get('/:jobId', getScanJob);
+
+// Get items from a specific scan job
+router.get('/:jobId/items', getScanJobItems);
 
 // Retry failed scan job
 router.post('/:jobId/retry', retryScanJob);

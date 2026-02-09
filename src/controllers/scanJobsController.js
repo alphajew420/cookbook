@@ -242,6 +242,80 @@ const retryScanJob = async (req, res, next) => {
 };
 
 /**
+ * Get items from a specific scan job
+ */
+const getScanJobItems = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { jobId } = req.params;
+
+    // Verify ownership and get scan job info
+    const jobResult = await query(
+      `SELECT id, scan_type, status, items_found, created_at, completed_at
+       FROM scan_jobs
+       WHERE id = $1 AND user_id = $2`,
+      [jobId, userId]
+    );
+
+    if (jobResult.rows.length === 0) {
+      throw new NotFoundError('Scan job not found');
+    }
+
+    const job = jobResult.rows[0];
+
+    // Only fridge scans have items
+    if (job.scan_type !== 'fridge') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_SCAN_TYPE',
+          message: 'Only fridge scan jobs have associated items',
+        },
+      });
+    }
+
+    // Get items associated with this scan job
+    const itemsResult = await query(
+      `SELECT id, name, quantity, category, freshness, packaging, confidence, 
+              expiry_date, scan_job_id, created_at, updated_at
+       FROM fridge_items
+       WHERE scan_job_id = $1 AND user_id = $2
+       ORDER BY created_at ASC`,
+      [jobId, userId]
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        scanJob: {
+          id: job.id,
+          scanType: job.scan_type,
+          status: job.status,
+          itemsFound: job.items_found,
+          createdAt: job.created_at,
+          completedAt: job.completed_at,
+        },
+        items: itemsResult.rows.map((item) => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          category: item.category,
+          freshness: item.freshness,
+          packaging: item.packaging,
+          confidence: item.confidence,
+          expiryDate: item.expiry_date,
+          scanJobId: item.scan_job_id,
+          createdAt: item.created_at,
+          updatedAt: item.updated_at,
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Delete scan job
  */
 const deleteScanJob = async (req, res, next) => {
@@ -288,6 +362,7 @@ const deleteScanJob = async (req, res, next) => {
 module.exports = {
   getScanJobs,
   getScanJob,
+  getScanJobItems,
   retryScanJob,
   deleteScanJob,
 };

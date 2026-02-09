@@ -259,8 +259,8 @@ fridgeQueue.process(async (job) => {
       const fridgeItems = [];
       for (const item of aiResult.data.items) {
         const result = await client.query(
-          `INSERT INTO fridge_items (user_id, name, quantity, category, freshness, packaging, confidence)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO fridge_items (user_id, name, quantity, category, freshness, packaging, confidence, scan_job_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id`,
           [
             userId,
@@ -270,6 +270,7 @@ fridgeQueue.process(async (job) => {
             item.freshness || null,
             item.packaging || null,
             item.confidence || 'medium',
+            jobId,
           ]
         );
         fridgeItems.push(result.rows[0]);
