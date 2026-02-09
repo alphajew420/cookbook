@@ -330,8 +330,8 @@ const scanFridge = async (req, res, next) => {
       return fridgeItems;
     });
     
-    // Invalidate cache
-    await cache.del(cacheKeys.fridgeInventory(userId));
+    // Invalidate all fridge inventory cache variations (different sort/category combinations)
+    await cache.delPattern(`${cacheKeys.fridgeInventory(userId)}*`);
     
     // Check for warnings
     const warnings = [];
