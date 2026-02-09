@@ -3,6 +3,7 @@ const { uploadImage, addSignedUrlsToRecipes } = require('../utils/s3');
 const { query, transaction } = require('../database/db');
 const { cache, cacheKeys, cacheTTL } = require('../utils/redis');
 const { AppError, NotFoundError } = require('../middleware/errorHandler');
+const { addCookbookJob, addFridgeJob } = require('../services/queue');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
@@ -11,6 +12,13 @@ const { v4: uuidv4 } = require('uuid');
  */
 const scanCookbook = async (req, res, next) => {
   try {
+    const isAsync = req.query.async === 'true';
+
+    if (isAsync) {
+      return await scanCookbookAsync(req, res, next);
+    }
+
+    // Synchronous flow (existing)
     if (!req.file) {
       throw new AppError('No image file provided', 400, 'INVALID_REQUEST');
     }
@@ -447,8 +455,130 @@ const getScanStatus = async (req, res, next) => {
   }
 };
 
+/**
+ * Async cookbook scan - returns immediately
+ */
+const scanCookbookAsync = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      throw new AppError('No image file provided', 400, 'INVALID_REQUEST');
+    }
+
+    const { cookbookName } = req.body;
+    const userId = req.user.id;
+    const imageBuffer = req.file.buffer;
+
+    logger.info('Processing async cookbook scan', {
+      userId,
+      cookbookName,
+      imageSize: imageBuffer.length,
+    });
+
+    // Upload image to S3
+    const imageUrl = await uploadImage(imageBuffer, 'cookbook', req.file.mimetype);
+
+    // Create job record
+    const jobId = uuidv4();
+    await query(
+      `INSERT INTO scan_jobs (id, user_id, scan_type, status, cookbook_name, total_pages, image_urls)
+       VALUES ($1, $2, 'cookbook', 'pending', $3, 1, $4)`,
+      [jobId, userId, cookbookName || 'My Cookbook', [imageUrl]]
+    );
+
+    // Add to queue
+    await addCookbookJob({
+      jobId,
+      userId,
+      cookbookName: cookbookName || 'My Cookbook',
+      imageUrls: [imageUrl],
+    });
+
+    logger.info('Async cookbook scan submitted', { jobId, userId });
+
+    res.status(202).json({
+      success: true,
+      message: 'Cookbook scan submitted for processing',
+      data: {
+        jobId,
+        status: 'pending',
+        estimatedTime: '30-60 seconds',
+        pollUrl: `/api/scan/jobs/${jobId}`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Async fridge scan - returns immediately
+ */
+const scanFridgeAsync = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      throw new AppError('No image file provided', 400, 'INVALID_REQUEST');
+    }
+
+    const { replaceExisting } = req.body;
+    const userId = req.user.id;
+    const imageBuffer = req.file.buffer;
+
+    logger.info('Processing async fridge scan', {
+      userId,
+      imageSize: imageBuffer.length,
+    });
+
+    // Upload image to S3
+    const imageUrl = await uploadImage(imageBuffer, 'fridge', req.file.mimetype);
+
+    // Create job record
+    const jobId = uuidv4();
+    await query(
+      `INSERT INTO scan_jobs (id, user_id, scan_type, status, image_urls)
+       VALUES ($1, $2, 'fridge', 'pending', $3)`,
+      [jobId, userId, [imageUrl]]
+    );
+
+    // Add to queue
+    await addFridgeJob({
+      jobId,
+      userId,
+      imageUrl,
+      replaceExisting: replaceExisting === 'true' || replaceExisting === true,
+    });
+
+    logger.info('Async fridge scan submitted', { jobId, userId });
+
+    res.status(202).json({
+      success: true,
+      message: 'Fridge scan submitted for processing',
+      data: {
+        jobId,
+        status: 'pending',
+        estimatedTime: '15-30 seconds',
+        pollUrl: `/api/scan/jobs/${jobId}`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Scan fridge (with async support)
+ */
+const scanFridgeWithAsync = async (req, res, next) => {
+  const isAsync = req.query.async === 'true';
+
+  if (isAsync) {
+    return await scanFridgeAsync(req, res, next);
+  }
+
+  return await scanFridge(req, res, next);
+};
+
 module.exports = {
   scanCookbook,
-  scanFridge,
+  scanFridge: scanFridgeWithAsync,
   getScanStatus,
 };

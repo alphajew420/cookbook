@@ -11,6 +11,7 @@ const { generalLimiter } = require('./middleware/rateLimiter');
 // Import routes
 const authRoutes = require('./routes/auth');
 const scanRoutes = require('./routes/scan');
+const scanJobsRoutes = require('./routes/scanJobs');
 const cookbookRoutes = require('./routes/cookbooks');
 const recipeRoutes = require('./routes/recipes');
 const fridgeRoutes = require('./routes/fridge');
@@ -61,6 +62,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scan', scanRoutes);
+app.use('/api/scan/jobs', scanJobsRoutes);
 app.use('/api/cookbooks', cookbookRoutes);
 app.use('/api/cookbook', cookbookRoutes); // Alias for compatibility
 app.use('/api/recipes', recipeRoutes);
@@ -85,12 +87,21 @@ const startServer = async () => {
       process.exit(1);
     }
     
+    // Start worker if enabled
+    if (process.env.ENABLE_WORKER === 'true') {
+      logger.info('Starting background worker...');
+      require('./workers/scanWorker');
+    }
+    
     // Start listening
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📚 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔗 API Base URL: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}`);
       logger.info(`✅ Health check: http://localhost:${PORT}/health`);
+      if (process.env.ENABLE_WORKER === 'true') {
+        logger.info(`⚙️  Background worker enabled`);
+      }
     });
   } catch (error) {
     logger.error('Failed to start server', { error: error.message });
