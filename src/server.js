@@ -91,6 +91,79 @@ app.get('/migrate', async (req, res) => {
   }
 });
 
+// Fridge scan history migration endpoint
+app.get('/migrate-fridge-scan-history', async (req, res) => {
+  try {
+    const { pool } = require('./database/db');
+    const client = await pool.connect();
+    
+    try {
+      logger.info('Running fridge scan history migration');
+
+      await client.query(`
+        ALTER TABLE fridge_items 
+        ADD COLUMN IF NOT EXISTS scan_job_id UUID NULL
+      `);
+      logger.info('Added scan_job_id column');
+
+      try {
+        await client.query(`
+          ALTER TABLE fridge_items
+          ADD CONSTRAINT fk_fridge_items_scan_job 
+            FOREIGN KEY (scan_job_id) 
+            REFERENCES scan_jobs(id) 
+            ON DELETE SET NULL
+        `);
+        logger.info('Added foreign key constraint');
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          logger.info('Foreign key constraint already exists, skipping');
+        } else {
+          throw error;
+        }
+      }
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_fridge_items_scan_job_id 
+        ON fridge_items(scan_job_id)
+      `);
+      logger.info('Created scan_job_id index');
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_fridge_items_user_scan_job 
+        ON fridge_items(user_id, scan_job_id)
+      `);
+      logger.info('Created composite index');
+
+      const result = await client.query(`
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_name = 'fridge_items' AND column_name = 'scan_job_id'
+      `);
+
+      logger.info('Fridge scan history migration completed successfully');
+
+      res.status(200).json({
+        success: true,
+        message: 'Fridge scan history migration completed successfully',
+        details: {
+          columnAdded: result.rows.length > 0,
+          columnInfo: result.rows[0] || null,
+        },
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Migration failed', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+  }
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scan', scanRoutes);
