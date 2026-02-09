@@ -1,5 +1,5 @@
 const { processCookbookImage, processFridgeImage } = require('../services/gemini');
-const { uploadImage } = require('../utils/s3');
+const { uploadImage, addSignedUrlsToRecipes } = require('../utils/s3');
 const { query, transaction } = require('../database/db');
 const { cache, cacheKeys, cacheTTL } = require('../utils/redis');
 const { AppError, NotFoundError } = require('../middleware/errorHandler');
@@ -214,6 +214,14 @@ const scanCookbook = async (req, res, next) => {
       [result.cookbookId]
     );
     
+    // Add signed URLs to all recipes before returning
+    const recipesWithSignedUrls = await addSignedUrlsToRecipes(
+      result.recipes.map(r => ({
+        ...r,
+        originalImageUrl: imageUrl,
+      }))
+    );
+    
     // Invalidate cache
     await cache.delPattern(`user:${userId}:*`);
     
@@ -237,7 +245,7 @@ const scanCookbook = async (req, res, next) => {
           updatedAt: cookbookInfo.rows[0].updated_at,
         },
         recipesFound: result.recipes.length,
-        recipes: result.recipes,
+        recipes: recipesWithSignedUrls,
         processingTime: aiResult.processingTime,
         imageUrl,
         message: `Page processed successfully. ${result.recipes.length} recipe(s) found.`,
