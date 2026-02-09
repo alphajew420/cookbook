@@ -60,7 +60,7 @@ app.get('/health', (req, res) => {
 });
 
 // One-time migration endpoint (remove after use)
-app.post('/migrate', async (req, res) => {
+app.get('/migrate', async (req, res) => {
   try {
     const migrate = require('./database/migrate');
     await migrate();
