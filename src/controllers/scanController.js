@@ -302,30 +302,54 @@ const scanFridge = async (req, res, next) => {
     }
     
     // Store items in database
+    logger.info('Saving fridge items to database', {
+      userId,
+      itemCount: aiResult.data.items.length,
+      replaceExisting,
+    });
+    
     const items = await transaction(async (client) => {
       // Replace existing items if requested
       if (replaceExisting === 'true' || replaceExisting === true) {
-        await client.query('DELETE FROM fridge_items WHERE user_id = $1', [userId]);
+        const deleteResult = await client.query('DELETE FROM fridge_items WHERE user_id = $1', [userId]);
+        logger.info('Deleted existing fridge items', {
+          userId,
+          deletedCount: deleteResult.rowCount,
+        });
       }
       
       const fridgeItems = [];
       for (const item of aiResult.data.items) {
-        const result = await client.query(
-          `INSERT INTO fridge_items (user_id, name, quantity, category, freshness, packaging, confidence)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, name, quantity, category, freshness, packaging, confidence, created_at`,
-          [
+        try {
+          const result = await client.query(
+            `INSERT INTO fridge_items (user_id, name, quantity, category, freshness, packaging, confidence)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, name, quantity, category, freshness, packaging, confidence, created_at`,
+            [
+              userId,
+              item.name,
+              item.quantity || null,
+              item.category || null,
+              item.freshness || null,
+              item.packaging || null,
+              item.confidence || 'medium',
+            ]
+          );
+          fridgeItems.push(result.rows[0]);
+        } catch (error) {
+          logger.error('Failed to insert fridge item', {
             userId,
-            item.name,
-            item.quantity || null,
-            item.category || null,
-            item.freshness || null,
-            item.packaging || null,
-            item.confidence || 'medium',
-          ]
-        );
-        fridgeItems.push(result.rows[0]);
+            itemName: item.name,
+            error: error.message,
+          });
+          throw error;
+        }
       }
+      
+      logger.info('Fridge items saved successfully', {
+        userId,
+        savedCount: fridgeItems.length,
+      });
       
       return fridgeItems;
     });
