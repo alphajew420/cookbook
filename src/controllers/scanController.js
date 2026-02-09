@@ -141,6 +141,18 @@ const scanCookbook = async (req, res, next) => {
       // Store recipes
       const recipes = [];
       for (const recipeData of aiResult.data.recipes) {
+        // Sanitize servings - extract first number if it's a string like "2 12-inch pizzas, about 4-6 servings"
+        let servings = null;
+        if (recipeData.servings) {
+          if (typeof recipeData.servings === 'number') {
+            servings = recipeData.servings;
+          } else if (typeof recipeData.servings === 'string') {
+            // Extract first number from string
+            const match = recipeData.servings.match(/\d+/);
+            servings = match ? parseInt(match[0]) : null;
+          }
+        }
+        
         // Insert recipe
         const recipeResult = await client.query(
           `INSERT INTO recipes (cookbook_id, name, prep_time, cook_time, total_time, servings, notes, page_number, original_image_url)
@@ -152,7 +164,7 @@ const scanCookbook = async (req, res, next) => {
             recipeData.prepTime || null,
             recipeData.cookTime || null,
             recipeData.totalTime || null,
-            recipeData.servings || null,
+            servings,
             recipeData.notes || null,
             aiResult.data.pageNumber || null,
             imageUrl,

@@ -55,6 +55,7 @@ IMPORTANT RULES:
 - Preserve original recipe names and terminology
 - If ingredients are unclear, mark with "notes": "quantity unclear"
 - If multiple recipes on one page, extract ALL of them
+- "servings" MUST be a single integer number (e.g., 4, not "4-6 servings" or "2 pizzas")
 - Return ONLY valid JSON, no additional text`;
 
 const FRIDGE_PROMPT = `You are a food identification assistant. Analyze this refrigerator/fridge image and identify ALL visible food items and ingredients.
