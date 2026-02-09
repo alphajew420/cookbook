@@ -62,12 +62,27 @@ app.get('/health', (req, res) => {
 // One-time migration endpoint (remove after use)
 app.get('/migrate', async (req, res) => {
   try {
-    const migrate = require('./database/migrate');
-    await migrate();
-    res.status(200).json({
-      success: true,
-      message: 'Migration completed successfully',
-    });
+    const fs = require('fs');
+    const path = require('path');
+    const { pool } = require('./database/db');
+    
+    const client = await pool.connect();
+    
+    try {
+      // Read the scan_jobs migration file
+      const migrationPath = path.join(__dirname, 'database', 'add_scan_jobs.sql');
+      const migration = fs.readFileSync(migrationPath, 'utf8');
+      
+      // Execute migration
+      await client.query(migration);
+      
+      res.status(200).json({
+        success: true,
+        message: 'scan_jobs table created successfully',
+      });
+    } finally {
+      client.release();
+    }
   } catch (error) {
     res.status(500).json({
       success: false,
