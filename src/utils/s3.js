@@ -77,11 +77,15 @@ async function deleteImage(imageUrl) {
 /**
  * Get signed URL for private image
  * @param {string} imageUrl - Image URL
- * @param {number} expiresIn - Expiration time in seconds
+ * @param {number} expiresIn - Expiration time in seconds (default: 24 hours)
  * @returns {Promise<string>} Signed URL
  */
-async function getSignedUrl(imageUrl, expiresIn = 3600) {
+async function getSignedUrl(imageUrl, expiresIn = 86400) {
   try {
+    if (!imageUrl) {
+      return null;
+    }
+    
     const url = new URL(imageUrl);
     const key = url.pathname.substring(1);
     
@@ -98,12 +102,56 @@ async function getSignedUrl(imageUrl, expiresIn = 3600) {
       error: error.message,
       imageUrl,
     });
-    throw new Error('Failed to generate signed URL');
+    // Return original URL as fallback
+    return imageUrl;
   }
+}
+
+/**
+ * Add signed URLs to recipe object
+ * @param {Object} recipe - Recipe object with originalImageUrl
+ * @param {number} expiresIn - Expiration time in seconds
+ * @returns {Promise<Object>} Recipe with signed URL
+ */
+async function addSignedUrlToRecipe(recipe, expiresIn = 86400) {
+  if (!recipe) {
+    return recipe;
+  }
+  
+  if (recipe.originalImageUrl || recipe.original_image_url) {
+    const imageUrl = recipe.originalImageUrl || recipe.original_image_url;
+    const signedUrl = await getSignedUrl(imageUrl, expiresIn);
+    
+    return {
+      ...recipe,
+      originalImageUrl: signedUrl,
+      imageUrl: signedUrl, // Also add as imageUrl for consistency
+    };
+  }
+  
+  return recipe;
+}
+
+/**
+ * Add signed URLs to multiple recipes
+ * @param {Array} recipes - Array of recipe objects
+ * @param {number} expiresIn - Expiration time in seconds
+ * @returns {Promise<Array>} Recipes with signed URLs
+ */
+async function addSignedUrlsToRecipes(recipes, expiresIn = 86400) {
+  if (!recipes || recipes.length === 0) {
+    return recipes;
+  }
+  
+  return Promise.all(
+    recipes.map(recipe => addSignedUrlToRecipe(recipe, expiresIn))
+  );
 }
 
 module.exports = {
   uploadImage,
   deleteImage,
   getSignedUrl,
+  addSignedUrlToRecipe,
+  addSignedUrlsToRecipes,
 };

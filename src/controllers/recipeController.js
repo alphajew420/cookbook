@@ -1,6 +1,7 @@
 const { query } = require('../database/db');
 const { cache, cacheKeys, cacheTTL } = require('../utils/redis');
 const { NotFoundError, ForbiddenError } = require('../middleware/errorHandler');
+const { addSignedUrlToRecipe } = require('../utils/s3');
 const logger = require('../utils/logger');
 
 /**
@@ -77,12 +78,15 @@ const getRecipe = async (req, res, next) => {
       userId: recipe.user_id,
     };
     
-    // Cache response
+    // Add signed URL for image (24 hour expiration)
+    const responseWithSignedUrl = await addSignedUrlToRecipe(response);
+    
+    // Cache response (cache the version WITHOUT signed URL to avoid stale URLs)
     await cache.set(cacheKey, response, cacheTTL.recipe);
     
     res.status(200).json({
       success: true,
-      data: response,
+      data: responseWithSignedUrl,
     });
   } catch (error) {
     next(error);

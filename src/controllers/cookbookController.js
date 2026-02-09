@@ -1,6 +1,7 @@
 const { query } = require('../database/db');
 const { cache, cacheKeys, cacheTTL } = require('../utils/redis');
-const { NotFoundError, ForbiddenError } = require('../middleware/errorHandler');
+const { NotFoundError, ForbiddenError, ValidationError } = require('../middleware/errorHandler');
+const { addSignedUrlsToRecipes } = require('../utils/s3');
 const logger = require('../utils/logger');
 
 /**
@@ -216,12 +217,15 @@ const getCookbookRecipes = async (req, res, next) => {
         totalTime: recipe.total_time,
         servings: recipe.servings,
         notes: recipe.notes,
-        imageUrl: recipe.original_image_url,
+        originalImageUrl: recipe.original_image_url,
         ingredients: ingredientsResult.rows,
         instructions: instructionsResult.rows,
         createdAt: recipe.created_at,
       });
     }
+    
+    // Add signed URLs to all recipes
+    const recipesWithSignedUrls = await addSignedUrlsToRecipes(recipes);
     
     // Get total count
     const countResult = await query(
@@ -235,7 +239,7 @@ const getCookbookRecipes = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        recipes,
+        recipes: recipesWithSignedUrls,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),

@@ -1,6 +1,6 @@
 # Cookbook App Backend - API Documentation
 
-**Base URL:** `https://your-app.up.railway.app`
+**Base URL:** `https://cb-app-backend-production.up.railway.app/`
 
 **Version:** 1.0.0
 
@@ -24,6 +24,28 @@ Error responses:
     "details": { ... }
   }
 }
+```
+
+---
+
+## 🖼️ Image URLs - Important
+
+All recipe image URLs (`originalImageUrl` and `imageUrl` fields) are **pre-signed S3 URLs** that:
+
+- ✅ **Work directly in mobile apps** (React Native, Expo)
+- ✅ **Are secure** - No public bucket access required
+- ✅ **Expire after 24 hours** for security
+- ✅ **Include proper CORS headers** for cross-origin requests
+
+**What this means for you:**
+- Use the URLs directly in `<Image>` components
+- URLs are valid for 24 hours from generation
+- If a URL expires, fetch the recipe again to get a fresh URL
+- No additional authentication needed for image requests
+
+**Example URL format:**
+```
+https://cookbook-app-images-prod.s3.amazonaws.com/cookbook/abc123.jpeg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Signature=...
 ```
 
 ---
