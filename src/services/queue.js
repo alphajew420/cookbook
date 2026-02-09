@@ -16,6 +16,7 @@ const redisConfig = process.env.REDIS_URL
 // Create queues
 const cookbookQueue = new Bull('cookbook-scans', redisConfig);
 const fridgeQueue = new Bull('fridge-scans', redisConfig);
+const matchQueue = new Bull('recipe-matches', redisConfig);
 
 // Queue event listeners
 cookbookQueue.on('error', (error) => {
@@ -35,6 +36,17 @@ fridgeQueue.on('error', (error) => {
 
 fridgeQueue.on('failed', (job, error) => {
   logger.error('Fridge job failed', {
+    jobId: job.id,
+    error: error.message,
+  });
+});
+
+matchQueue.on('error', (error) => {
+  logger.error('Match queue error', { error: error.message });
+});
+
+matchQueue.on('failed', (job, error) => {
+  logger.error('Match job failed', {
     jobId: job.id,
     error: error.message,
   });
@@ -86,10 +98,39 @@ const addFridgeJob = async (jobData) => {
 };
 
 /**
+ * Add match job to queue
+ */
+const addMatchJob = async (jobData) => {
+  const job = await matchQueue.add(jobData, {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: false,
+    removeOnFail: false,
+    timeout: 120000,
+  });
+
+  logger.info('Match job added to queue', {
+    jobId: job.id,
+    userId: jobData.userId,
+    cookbookId: jobData.cookbookId,
+  });
+
+  return job.id;
+};
+
+/**
  * Get job status
  */
 const getJobStatus = async (queueType, jobId) => {
-  const queue = queueType === 'cookbook' ? cookbookQueue : fridgeQueue;
+  let queue;
+  if (queueType === 'cookbook') queue = cookbookQueue;
+  else if (queueType === 'fridge') queue = fridgeQueue;
+  else if (queueType === 'match') queue = matchQueue;
+  else return null;
+
   const job = await queue.getJob(jobId);
 
   if (!job) {
@@ -115,7 +156,9 @@ const getJobStatus = async (queueType, jobId) => {
 module.exports = {
   cookbookQueue,
   fridgeQueue,
+  matchQueue,
   addCookbookJob,
   addFridgeJob,
+  addMatchJob,
   getJobStatus,
 };

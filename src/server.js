@@ -15,6 +15,7 @@ const scanJobsRoutes = require('./routes/scanJobs');
 const cookbookRoutes = require('./routes/cookbooks');
 const recipeRoutes = require('./routes/recipes');
 const fridgeRoutes = require('./routes/fridge');
+const matchRoutes = require('./routes/matches');
 
 // Initialize Express app
 const app = express();
@@ -164,6 +165,50 @@ app.get('/migrate-fridge-scan-history', async (req, res) => {
   }
 });
 
+// Recipe matching migration endpoint
+app.get('/migrate-recipe-matching', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { pool } = require('./database/db');
+    
+    const client = await pool.connect();
+    
+    try {
+      logger.info('Running recipe matching migration');
+      
+      const migrationPath = path.join(__dirname, 'database', 'add_match_tables.sql');
+      const migration = fs.readFileSync(migrationPath, 'utf8');
+      
+      await client.query(migration);
+      
+      const tablesResult = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name IN ('match_jobs', 'recipe_matches')
+      `);
+      
+      logger.info('Recipe matching migration completed successfully');
+      
+      res.status(200).json({
+        success: true,
+        message: 'Recipe matching tables created successfully',
+        tables: tablesResult.rows.map(r => r.table_name),
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Migration failed', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+  }
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scan', scanRoutes);
@@ -173,6 +218,7 @@ app.use('/api/cookbook', cookbookRoutes); // Alias for compatibility
 app.use('/api/recipes', recipeRoutes);
 app.use('/api/recipe', recipeRoutes); // Alias for compatibility
 app.use('/api/fridge', fridgeRoutes);
+app.use('/api/matches', matchRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
