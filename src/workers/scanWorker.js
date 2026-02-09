@@ -10,12 +10,13 @@ const { v4: uuidv4 } = require('uuid');
  * Process cookbook scan job
  */
 cookbookQueue.process(async (job) => {
-  const { jobId, userId, cookbookName, imageUrls } = job.data;
+  const { jobId, userId, cookbookId, cookbookName, imageUrls } = job.data;
   const startTime = Date.now();
 
   logger.info('Processing cookbook job', {
     jobId,
     userId,
+    cookbookId,
     cookbookName,
     imageCount: imageUrls.length,
   });
@@ -29,25 +30,30 @@ cookbookQueue.process(async (job) => {
       [jobId]
     );
 
-    let cookbookId = null;
     let totalRecipes = 0;
+    const AWS = require('aws-sdk');
+    const s3 = new AWS.S3({
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      region: process.env.AWS_REGION || 'us-east-1',
+    });
 
     // Process each image
     for (let i = 0; i < imageUrls.length; i++) {
       const imageUrl = imageUrls[i];
 
       // Update progress
-      job.progress((i / imageUrls.length) * 100);
+      const progress = Math.round(((i + 1) / imageUrls.length) * 100);
+      job.progress(progress);
 
-      // Download image from S3 and process
-      const AWS = require('aws-sdk');
-      const s3 = new AWS.S3({
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        region: process.env.AWS_REGION || 'us-east-1',
+      logger.info('Processing page', {
+        jobId,
+        page: i + 1,
+        total: imageUrls.length,
+        progress: `${progress}%`,
       });
 
-      // Extract S3 key from URL
+      // Download image from S3
       const urlParts = imageUrl.split('.com/')[1].split('?')[0];
       const s3Params = {
         Bucket: process.env.S3_BUCKET_NAME,
@@ -61,38 +67,23 @@ cookbookQueue.process(async (job) => {
       const aiResult = await processCookbookImage(imageBuffer);
 
       if (!aiResult.success || aiResult.data.recipes.length === 0) {
-        logger.warn('No recipes found in image', { jobId, imageIndex: i });
+        logger.warn('No recipes found in image', { jobId, imageIndex: i + 1 });
+        
+        // Update processed pages even if no recipes found
+        await query(
+          `UPDATE scan_jobs SET processed_pages = $1 WHERE id = $2`,
+          [i + 1, jobId]
+        );
         continue;
       }
 
       // Store recipes in database
-      const result = await transaction(async (client) => {
-        let currentCookbookId = cookbookId;
-
-        // Create or get cookbook
-        if (!currentCookbookId) {
-          const existingCookbook = await client.query(
-            'SELECT id FROM cookbooks WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
-            [userId, cookbookName]
-          );
-
-          if (existingCookbook.rows.length > 0) {
-            currentCookbookId = existingCookbook.rows[0].id;
-          } else {
-            const cookbookResult = await client.query(
-              `INSERT INTO cookbooks (user_id, name, scanned_pages, cover_image_url)
-               VALUES ($1, $2, 1, $3)
-               RETURNING id`,
-              [userId, cookbookName, imageUrl]
-            );
-            currentCookbookId = cookbookResult.rows[0].id;
-          }
-        } else {
-          await client.query(
-            'UPDATE cookbooks SET scanned_pages = scanned_pages + 1, updated_at = NOW() WHERE id = $1',
-            [currentCookbookId]
-          );
-        }
+      await transaction(async (client) => {
+        // Update cookbook scanned_pages
+        await client.query(
+          'UPDATE cookbooks SET scanned_pages = scanned_pages + 1, updated_at = NOW() WHERE id = $1',
+          [cookbookId]
+        );
 
         // Store recipes
         for (const recipeData of aiResult.data.recipes) {
@@ -112,7 +103,7 @@ cookbookQueue.process(async (job) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING id`,
             [
-              currentCookbookId,
+              cookbookId,
               recipeData.name,
               recipeData.prepTime || null,
               recipeData.cookTime || null,
@@ -147,19 +138,20 @@ cookbookQueue.process(async (job) => {
 
           totalRecipes++;
         }
-
-        return currentCookbookId;
       });
 
-      cookbookId = result;
-
-      // Update processed pages
+      // Update processed pages after each image
       await query(
-        `UPDATE scan_jobs 
-         SET processed_pages = $1, cookbook_id = $2 
-         WHERE id = $3`,
-        [i + 1, cookbookId, jobId]
+        `UPDATE scan_jobs SET processed_pages = $1 WHERE id = $2`,
+        [i + 1, jobId]
       );
+
+      logger.info('Page processed', {
+        jobId,
+        page: i + 1,
+        total: imageUrls.length,
+        recipesFound: aiResult.data.recipes.length,
+      });
     }
 
     const processingTime = Date.now() - startTime;
