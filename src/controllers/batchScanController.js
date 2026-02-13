@@ -1,4 +1,4 @@
-const { uploadImage } = require('../utils/s3');
+const { uploadImage, extractKeyFromUrl } = require('../utils/s3');
 const { query } = require('../database/db');
 const { AppError } = require('../middleware/errorHandler');
 const { addCookbookJob } = require('../services/queue');
@@ -33,7 +33,7 @@ const scanCookbookBatch = async (req, res, next) => {
       logger.info('Image uploaded to S3', {
         index: i + 1,
         total: images.length,
-        key: imageUrl.split('.com/')[1].split('?')[0],
+        key: extractKeyFromUrl(imageUrl),
       });
     }
 

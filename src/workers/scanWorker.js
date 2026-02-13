@@ -3,6 +3,7 @@ const { cookbookQueue, fridgeQueue } = require('../services/queue');
 const { processCookbookImage, processFridgeImage } = require('../services/gemini');
 const { query, transaction } = require('../database/db');
 const { cache, cacheKeys } = require('../utils/redis');
+const { s3, BUCKET_NAME, extractKeyFromUrl } = require('../utils/s3');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
@@ -31,12 +32,6 @@ cookbookQueue.process(async (job) => {
     );
 
     let totalRecipes = 0;
-    const AWS = require('aws-sdk');
-    const s3 = new AWS.S3({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      region: process.env.AWS_REGION || 'us-east-1',
-    });
 
     // Process each image
     for (let i = 0; i < imageUrls.length; i++) {
@@ -53,21 +48,27 @@ cookbookQueue.process(async (job) => {
         progress: `${progress}%`,
       });
 
-      // Download image from S3
-      const urlParts = imageUrl.split('.com/')[1].split('?')[0];
-      const s3Params = {
-        Bucket: process.env.S3_BUCKET_NAME,
-        Key: urlParts,
-      };
+      // Download image from R2/S3
+      const key = extractKeyFromUrl(imageUrl);
+      logger.info('Downloading image from R2', { jobId, key, bucket: BUCKET_NAME, originalUrl: imageUrl });
 
-      const imageData = await s3.getObject(s3Params).promise();
-      const imageBuffer = imageData.Body;
+      let imageBuffer;
+      try {
+        const imageData = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
+        imageBuffer = imageData.Body;
+        logger.info('Image downloaded from R2', { jobId, key, size: imageBuffer.length });
+      } catch (s3Error) {
+        logger.error('R2 download failed', { jobId, key, bucket: BUCKET_NAME, error: s3Error.message, code: s3Error.code });
+        throw s3Error;
+      }
 
       // Process with Gemini
+      logger.info('Sending image to Gemini AI', { jobId, page: i + 1, imageSize: imageBuffer.length });
       const aiResult = await processCookbookImage(imageBuffer);
+      logger.info('Gemini AI response', { jobId, page: i + 1, success: aiResult.success, recipesFound: aiResult.data?.recipes?.length || 0 });
 
       if (!aiResult.success || aiResult.data.recipes.length === 0) {
-        logger.warn('No recipes found in image', { jobId, imageIndex: i + 1 });
+        logger.warn('No recipes found in image', { jobId, imageIndex: i + 1, aiSuccess: aiResult.success, aiMessage: aiResult.message });
         
         // Update processed pages even if no recipes found
         await query(
@@ -215,44 +216,48 @@ fridgeQueue.process(async (job) => {
   logger.info('Processing fridge job', {
     jobId,
     userId,
+    imageUrl,
+    replaceExisting,
   });
 
   try {
     // Update job status to processing
     await query(
-      `UPDATE scan_jobs 
-       SET status = 'processing', started_at = NOW() 
+      `UPDATE scan_jobs
+       SET status = 'processing', started_at = NOW()
        WHERE id = $1`,
       [jobId]
     );
 
-    // Download image from S3
-    const AWS = require('aws-sdk');
-    const s3 = new AWS.S3({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      region: process.env.AWS_REGION || 'us-east-1',
-    });
+    // Download image from R2/S3
+    const key = extractKeyFromUrl(imageUrl);
+    logger.info('Downloading fridge image from R2', { jobId, key, bucket: BUCKET_NAME, originalUrl: imageUrl });
 
-    const urlParts = imageUrl.split('.com/')[1].split('?')[0];
-    const s3Params = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: urlParts,
-    };
-
-    const imageData = await s3.getObject(s3Params).promise();
-    const imageBuffer = imageData.Body;
+    let imageBuffer;
+    try {
+      const imageData = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
+      imageBuffer = imageData.Body;
+      logger.info('Fridge image downloaded from R2', { jobId, key, size: imageBuffer.length });
+    } catch (s3Error) {
+      logger.error('R2 download failed for fridge image', { jobId, key, bucket: BUCKET_NAME, error: s3Error.message, code: s3Error.code });
+      throw s3Error;
+    }
 
     // Process with Gemini
+    logger.info('Sending fridge image to Gemini AI', { jobId, imageSize: imageBuffer.length });
     const aiResult = await processFridgeImage(imageBuffer);
+    logger.info('Gemini AI fridge response', { jobId, success: aiResult.success, itemsFound: aiResult.data?.items?.length || 0 });
 
     if (!aiResult.success) {
+      logger.error('Gemini AI failed for fridge scan', { jobId, message: aiResult.message });
       throw new Error(aiResult.message || 'Failed to process fridge image');
     }
 
     // Store items in database
+    logger.info('Storing fridge items in database', { jobId, itemCount: aiResult.data.items.length, replaceExisting });
     const items = await transaction(async (client) => {
       if (replaceExisting) {
+        logger.info('Replacing existing fridge items', { jobId, userId });
         await client.query('DELETE FROM fridge_items WHERE user_id = $1', [userId]);
       }
 

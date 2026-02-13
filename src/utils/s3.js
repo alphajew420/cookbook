@@ -15,6 +15,19 @@ const s3 = new AWS.S3({
 const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 /**
+ * Extract the object key from a stored URL (strips leading bucket name for path-style URLs)
+ */
+function extractKeyFromUrl(imageUrl) {
+  const url = new URL(imageUrl);
+  const path = url.pathname.substring(1); // Remove leading slash
+  // With path-style URLs the bucket name is the first segment — strip it
+  if (path.startsWith(`${BUCKET_NAME}/`)) {
+    return path.substring(BUCKET_NAME.length + 1);
+  }
+  return path;
+}
+
+/**
  * Upload image to S3
  * @param {Buffer} buffer - Image buffer
  * @param {string} folder - Folder name (cookbook or fridge)
@@ -56,9 +69,7 @@ async function uploadImage(buffer, folder, mimeType) {
  */
 async function deleteImage(imageUrl) {
   try {
-    // Extract key from URL
-    const url = new URL(imageUrl);
-    const key = url.pathname.substring(1); // Remove leading slash
+    const key = extractKeyFromUrl(imageUrl);
     
     const params = {
       Bucket: BUCKET_NAME,
@@ -88,9 +99,8 @@ async function getSignedUrl(imageUrl, expiresIn = 86400) {
     if (!imageUrl) {
       return null;
     }
-    
-    const url = new URL(imageUrl);
-    const key = url.pathname.substring(1);
+
+    const key = extractKeyFromUrl(imageUrl);
     
     const params = {
       Bucket: BUCKET_NAME,
@@ -152,6 +162,9 @@ async function addSignedUrlsToRecipes(recipes, expiresIn = 86400) {
 }
 
 module.exports = {
+  s3,
+  BUCKET_NAME,
+  extractKeyFromUrl,
   uploadImage,
   deleteImage,
   getSignedUrl,
