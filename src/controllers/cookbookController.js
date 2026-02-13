@@ -1,7 +1,7 @@
 const { query } = require('../database/db');
 const { cache, cacheKeys, cacheTTL } = require('../utils/redis');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../middleware/errorHandler');
-const { addSignedUrlsToRecipes } = require('../utils/s3');
+const { addSignedUrlsToRecipes, getSignedUrl } = require('../utils/s3');
 const logger = require('../utils/logger');
 
 /**
@@ -45,18 +45,23 @@ const getCookbooks = async (req, res, next) => {
     const total = parseInt(countResult.rows[0].count);
     const totalPages = Math.ceil(total / limit);
     
+    // Sign cover image URLs
+    const cookbooks = await Promise.all(
+      result.rows.map(async (row) => ({
+        id: row.id,
+        name: row.name,
+        coverImageUrl: await getSignedUrl(row.cover_image_url),
+        scannedPages: row.scanned_pages,
+        recipeCount: parseInt(row.recipe_count),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
+    );
+
     const response = {
       success: true,
       data: {
-        cookbooks: result.rows.map(row => ({
-          id: row.id,
-          name: row.name,
-          coverImageUrl: row.cover_image_url,
-          scannedPages: row.scanned_pages,
-          recipeCount: parseInt(row.recipe_count),
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        })),
+        cookbooks,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -65,10 +70,7 @@ const getCookbooks = async (req, res, next) => {
         },
       },
     };
-    
-    // Cache response
-    await cache.set(cacheKey, response, cacheTTL.cookbooks);
-    
+
     res.status(200).json(response);
   } catch (error) {
     next(error);
@@ -126,7 +128,7 @@ const getCookbook = async (req, res, next) => {
     const response = {
       id: cookbook.id,
       name: cookbook.name,
-      coverImageUrl: cookbook.cover_image_url,
+      coverImageUrl: await getSignedUrl(cookbook.cover_image_url),
       scannedPages: cookbook.scanned_pages,
       createdAt: cookbook.created_at,
       updatedAt: cookbook.updated_at,
@@ -140,10 +142,7 @@ const getCookbook = async (req, res, next) => {
       })),
       userId: cookbook.user_id,
     };
-    
-    // Cache response
-    await cache.set(cacheKey, response, cacheTTL.cookbooks);
-    
+
     res.status(200).json({
       success: true,
       data: response,

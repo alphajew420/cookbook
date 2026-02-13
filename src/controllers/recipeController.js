@@ -17,7 +17,8 @@ const getRecipe = async (req, res, next) => {
     const cached = await cache.get(cacheKey);
     if (cached && cached.userId === userId) {
       logger.debug('Returning cached recipe', { recipeId: id });
-      return res.status(200).json({ success: true, data: cached });
+      const cachedWithSignedUrl = await addSignedUrlToRecipe(cached);
+      return res.status(200).json({ success: true, data: cachedWithSignedUrl });
     }
     
     // Get recipe with cookbook info

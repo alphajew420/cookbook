@@ -109,11 +109,14 @@ async function getSignedUrl(imageUrl, expiresIn = 86400) {
     };
     
     const signedUrl = await s3.getSignedUrlPromise('getObject', params);
+    logger.info('Generated signed URL', { key, hasSignature: signedUrl.includes('X-Amz-Signature') });
     return signedUrl;
   } catch (error) {
     logger.error('S3 signed URL error', {
       error: error.message,
+      code: error.code,
       imageUrl,
+      key: extractKeyFromUrl(imageUrl),
     });
     // Return original URL as fallback
     return imageUrl;
