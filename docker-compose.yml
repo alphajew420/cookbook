@@ -10,14 +10,14 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=postgresql://postgres:cookbook_password@db:5432/cookbook_db
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/cookbook_db
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - S3_ENDPOINT=${S3_ENDPOINT}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
     depends_on:
       db:
@@ -35,7 +35,7 @@ services:
     environment:
       - POSTGRES_DB=cookbook_db
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=cookbook_password
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
