@@ -2,9 +2,12 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('./logger');
 
+// Strip any trailing path from the endpoint (e.g. /bucketname)
+const S3_ENDPOINT = new URL(process.env.S3_ENDPOINT).origin;
+
 // Configure S3-compatible client (Cloudflare R2)
 const s3 = new AWS.S3({
-  endpoint: process.env.S3_ENDPOINT,
+  endpoint: S3_ENDPOINT,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   region: 'auto',
@@ -15,7 +18,8 @@ const s3 = new AWS.S3({
 const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 logger.info('S3/R2 config', {
-  endpoint: process.env.S3_ENDPOINT || 'NOT SET',
+  rawEndpoint: process.env.S3_ENDPOINT || 'NOT SET',
+  cleanedEndpoint: S3_ENDPOINT,
   bucket: BUCKET_NAME || 'NOT SET',
   hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
   hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
@@ -56,7 +60,7 @@ async function uploadImage(buffer, folder, mimeType) {
   try {
     await s3.upload(params).promise();
     // Construct URL ourselves — result.Location from R2 can double the bucket name
-    const imageUrl = `${process.env.S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
+    const imageUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
     logger.info('Image uploaded to R2', {
       key: fileName,
       size: buffer.length,
