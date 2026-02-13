@@ -2,11 +2,14 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('./logger');
 
-// Configure AWS S3
+// Configure S3-compatible client (Cloudflare R2)
 const s3 = new AWS.S3({
+  endpoint: process.env.S3_ENDPOINT,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
+  region: 'auto',
+  signatureVersion: 'v4',
+  s3ForcePathStyle: true,
 });
 
 const BUCKET_NAME = process.env.S3_BUCKET_NAME;
@@ -27,7 +30,7 @@ async function uploadImage(buffer, folder, mimeType) {
     Key: fileName,
     Body: buffer,
     ContentType: mimeType,
-    ACL: 'private', // Changed to private for security
+    // Note: ACL not supported by Cloudflare R2
   };
   
   try {

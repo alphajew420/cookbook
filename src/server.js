@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const logger = require('./utils/logger');
 const { testConnection } = require('./database/db');
+const migrate = require('./database/migrate');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { generalLimiter } = require('./middleware/rateLimiter');
 
@@ -20,6 +21,9 @@ const matchRoutes = require('./routes/matches');
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Trust proxy (required for Railway/reverse proxies)
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
@@ -263,7 +267,12 @@ const startServer = async () => {
       logger.error('Failed to connect to database. Exiting...');
       process.exit(1);
     }
-    
+
+    // Run database migrations
+    logger.info('Running database migrations...');
+    await migrate();
+    logger.info('Database migrations completed');
+
     // Start worker if enabled
     if (process.env.ENABLE_WORKER === 'true') {
       logger.info('Starting background worker...');

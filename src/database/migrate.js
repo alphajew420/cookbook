@@ -29,13 +29,13 @@ async function migrate() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
 // Run migration if called directly
 if (require.main === module) {
   migrate()
+    .then(() => pool.end())
     .then(() => process.exit(0))
     .catch(() => process.exit(1));
 }
