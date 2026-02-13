@@ -93,6 +93,53 @@ const getRecipe = async (req, res, next) => {
   }
 };
 
+/**
+ * Delete recipe by ID
+ */
+const deleteRecipe = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Get recipe with cookbook ownership info
+    const recipeResult = await query(
+      `SELECT r.id, c.user_id, c.id as cookbook_id
+       FROM recipes r
+       JOIN cookbooks c ON r.cookbook_id = c.id
+       WHERE r.id = $1`,
+      [id]
+    );
+
+    if (recipeResult.rows.length === 0) {
+      throw new NotFoundError('Recipe not found');
+    }
+
+    if (recipeResult.rows[0].user_id !== userId) {
+      throw new ForbiddenError('Not authorized to delete this recipe');
+    }
+
+    const cookbookId = recipeResult.rows[0].cookbook_id;
+
+    // Delete recipe (cascades to ingredients and instructions)
+    await query('DELETE FROM recipes WHERE id = $1', [id]);
+
+    // Invalidate cache
+    await cache.del(cacheKeys.recipe(id));
+    await cache.del(cacheKeys.cookbook(cookbookId));
+    await cache.delPattern(`user:${userId}:*`);
+
+    logger.info('Recipe deleted', { recipeId: id, cookbookId, userId });
+
+    res.status(200).json({
+      success: true,
+      message: 'Recipe deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getRecipe,
+  deleteRecipe,
 };

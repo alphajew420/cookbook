@@ -1,12 +1,13 @@
 const { uploadImage, extractKeyFromUrl } = require('../utils/s3');
 const { query } = require('../database/db');
-const { AppError } = require('../middleware/errorHandler');
+const { AppError, NotFoundError, ForbiddenError } = require('../middleware/errorHandler');
 const { addCookbookJob } = require('../services/queue');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
 /**
  * Batch cookbook scan - accepts multiple images for one cookbook
+ * Supports adding pages to an existing cookbook via optional cookbookId field
  */
 const scanCookbookBatch = async (req, res, next) => {
   try {
@@ -14,13 +15,14 @@ const scanCookbookBatch = async (req, res, next) => {
       throw new AppError('No image files provided', 400, 'INVALID_REQUEST');
     }
 
-    const { cookbookName } = req.body;
+    const { cookbookName, cookbookId: existingCookbookId } = req.body;
     const userId = req.user.id;
     const images = req.files;
 
     logger.info('Processing batch cookbook scan', {
       userId,
       cookbookName,
+      existingCookbookId: existingCookbookId || null,
       imageCount: images.length,
     });
 
@@ -29,7 +31,7 @@ const scanCookbookBatch = async (req, res, next) => {
     for (let i = 0; i < images.length; i++) {
       const imageUrl = await uploadImage(images[i].buffer, 'cookbook', images[i].mimetype);
       imageUrls.push(imageUrl);
-      
+
       logger.info('Image uploaded to S3', {
         index: i + 1,
         total: images.length,
@@ -37,33 +39,50 @@ const scanCookbookBatch = async (req, res, next) => {
       });
     }
 
-    // Check if cookbook with this name exists (within last 5 minutes)
-    const recentCookbook = await query(
-      `SELECT id FROM cookbooks 
-       WHERE user_id = $1 
-       AND LOWER(name) = LOWER($2) 
-       AND created_at >= NOW() - INTERVAL '5 minutes'
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [userId, cookbookName || 'My Cookbook']
-    );
-
     let cookbookId;
-    
-    if (recentCookbook.rows.length > 0) {
-      // Reuse existing cookbook
-      cookbookId = recentCookbook.rows[0].id;
-      logger.info('Reusing existing cookbook', { cookbookId, cookbookName });
-    } else {
-      // Create new cookbook
-      const cookbookResult = await query(
-        `INSERT INTO cookbooks (user_id, name, scanned_pages, cover_image_url)
-         VALUES ($1, $2, 0, $3)
-         RETURNING id`,
-        [userId, cookbookName || 'My Cookbook', imageUrls[0]]
+
+    if (existingCookbookId) {
+      // Adding pages to an existing cookbook
+      const existing = await query(
+        'SELECT id, user_id, name FROM cookbooks WHERE id = $1',
+        [existingCookbookId]
       );
-      cookbookId = cookbookResult.rows[0].id;
-      logger.info('Created new cookbook', { cookbookId, cookbookName });
+
+      if (existing.rows.length === 0) {
+        throw new NotFoundError('Cookbook not found');
+      }
+
+      if (existing.rows[0].user_id !== userId) {
+        throw new ForbiddenError('Not authorized to add pages to this cookbook');
+      }
+
+      cookbookId = existingCookbookId;
+      logger.info('Adding pages to existing cookbook', { cookbookId, cookbookName: existing.rows[0].name });
+    } else {
+      // Create a new cookbook (existing behavior)
+      const recentCookbook = await query(
+        `SELECT id FROM cookbooks
+         WHERE user_id = $1
+         AND LOWER(name) = LOWER($2)
+         AND created_at >= NOW() - INTERVAL '5 minutes'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId, cookbookName || 'My Cookbook']
+      );
+
+      if (recentCookbook.rows.length > 0) {
+        cookbookId = recentCookbook.rows[0].id;
+        logger.info('Reusing existing cookbook', { cookbookId, cookbookName });
+      } else {
+        const cookbookResult = await query(
+          `INSERT INTO cookbooks (user_id, name, scanned_pages, cover_image_url)
+           VALUES ($1, $2, 0, $3)
+           RETURNING id`,
+          [userId, cookbookName || 'My Cookbook', imageUrls[0]]
+        );
+        cookbookId = cookbookResult.rows[0].id;
+        logger.info('Created new cookbook', { cookbookId, cookbookName });
+      }
     }
 
     // Create single job for all pages
