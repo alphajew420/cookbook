@@ -54,12 +54,15 @@ async function uploadImage(buffer, folder, mimeType) {
   };
   
   try {
-    const result = await s3.upload(params).promise();
-    logger.info('Image uploaded to S3', {
+    await s3.upload(params).promise();
+    // Construct URL ourselves — result.Location from R2 can double the bucket name
+    const imageUrl = `${process.env.S3_ENDPOINT}/${BUCKET_NAME}/${fileName}`;
+    logger.info('Image uploaded to R2', {
       key: fileName,
       size: buffer.length,
+      url: imageUrl,
     });
-    return result.Location;
+    return imageUrl;
   } catch (error) {
     logger.error('S3 upload error', {
       message: error.message,
