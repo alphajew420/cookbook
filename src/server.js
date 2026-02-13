@@ -273,11 +273,9 @@ const startServer = async () => {
     await migrate();
     logger.info('Database migrations completed');
 
-    // Start worker if enabled
-    if (process.env.ENABLE_WORKER === 'true') {
-      logger.info('Starting background worker...');
-      require('./workers/scanWorker');
-    }
+    // Start background worker
+    logger.info('Starting background worker...');
+    require('./workers/scanWorker');
     
     // Start listening
     app.listen(PORT, () => {
@@ -285,9 +283,7 @@ const startServer = async () => {
       logger.info(`📚 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔗 API Base URL: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}`);
       logger.info(`✅ Health check: http://localhost:${PORT}/health`);
-      if (process.env.ENABLE_WORKER === 'true') {
-        logger.info(`⚙️  Background worker enabled`);
-      }
+      logger.info(`⚙️  Background worker enabled`);
     });
   } catch (error) {
     logger.error('Failed to start server', { error: error.message });
