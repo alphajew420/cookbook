@@ -14,6 +14,13 @@ const s3 = new AWS.S3({
 
 const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
+logger.info('S3/R2 config', {
+  endpoint: process.env.S3_ENDPOINT || 'NOT SET',
+  bucket: BUCKET_NAME || 'NOT SET',
+  hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+  hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
+});
+
 /**
  * Extract the object key from a stored URL (strips leading bucket name for path-style URLs)
  */
@@ -55,7 +62,13 @@ async function uploadImage(buffer, folder, mimeType) {
     return result.Location;
   } catch (error) {
     logger.error('S3 upload error', {
-      error: error.message,
+      message: error.message,
+      code: error.code,
+      statusCode: error.statusCode,
+      region: error.region,
+      hostname: error.hostname,
+      endpoint: process.env.S3_ENDPOINT,
+      bucket: BUCKET_NAME,
       folder,
     });
     throw new Error('Failed to upload image to storage');
