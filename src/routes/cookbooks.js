@@ -7,8 +7,12 @@ const {
   updateCookbook,
   deleteCookbook,
 } = require('../controllers/cookbookController');
+const { getPopularCookbooks } = require('../controllers/popularCookbooksController');
 const { authenticate } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+
+// Popular cookbooks across all users (must be before /:id)
+router.get('/popular', authenticate, getPopularCookbooks);
 
 // Get all cookbooks
 router.get('/', authenticate, getCookbooks);
