@@ -1,4 +1,3 @@
-const pdfParse = require('pdf-parse');
 const logger = require('../utils/logger');
 
 /**
@@ -7,6 +6,7 @@ const logger = require('../utils/logger');
  * @returns {Promise<number>}
  */
 async function getPdfPageCount(pdfBuffer) {
+  const pdfParse = require('pdf-parse');
   const data = await pdfParse(pdfBuffer);
   return data.numpages;
 }
@@ -17,8 +17,11 @@ async function getPdfPageCount(pdfBuffer) {
  * @returns {Promise<Buffer[]>} Array of image buffers (one per page)
  */
 async function extractPagesAsImages(pdfBuffer) {
+  const pdfParse = require('pdf-parse');
   const { fromBuffer } = require('pdf2pic');
-  const pageCount = await getPdfPageCount(pdfBuffer);
+
+  const data = await pdfParse(pdfBuffer);
+  const pageCount = data.numpages;
   logger.info('PDF page count', { pageCount });
 
   const converter = fromBuffer(pdfBuffer, {
