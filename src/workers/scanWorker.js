@@ -100,8 +100,8 @@ cookbookQueue.process(async (job) => {
           }
 
           const recipeResult = await client.query(
-            `INSERT INTO recipes (cookbook_id, name, prep_time, cook_time, total_time, servings, notes, page_number, original_image_url)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO recipes (cookbook_id, name, prep_time, cook_time, total_time, servings, notes, page_number, original_image_url, cuisine, dietary_tags)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              RETURNING id`,
             [
               cookbookId,
@@ -113,6 +113,8 @@ cookbookQueue.process(async (job) => {
               recipeData.notes || null,
               i + 1,
               imageUrl,
+              recipeData.cuisine || null,
+              recipeData.dietaryTags && recipeData.dietaryTags.length > 0 ? recipeData.dietaryTags : null,
             ]
           );
 

@@ -223,3 +223,9 @@ CREATE TABLE IF NOT EXISTS recipe_matches (
 CREATE INDEX IF NOT EXISTS idx_recipe_matches_match_job_id ON recipe_matches(match_job_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_matches_recipe_id ON recipe_matches(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_matches_percentage ON recipe_matches(match_percentage DESC);
+
+-- Cuisine and dietary tags for recipes
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cuisine VARCHAR(50);
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS dietary_tags TEXT[];
+CREATE INDEX IF NOT EXISTS idx_recipes_cuisine ON recipes(cuisine);
+CREATE INDEX IF NOT EXISTS idx_recipes_dietary_tags ON recipes USING GIN(dietary_tags);

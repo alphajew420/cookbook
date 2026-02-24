@@ -18,6 +18,8 @@ For EACH recipe found, provide:
 6. Total time (if mentioned)
 7. Servings/yield (if mentioned)
 8. Any special notes or tips
+9. Cuisine type (detect from recipe name, ingredients, and cooking style). Must be one of: Italian, Mexican, Chinese, Japanese, Thai, Korean, Indian, French, Greek, Lebanese, Mediterranean, American, Southern, BBQ, Caribbean, Ethiopian, Vietnamese, Moroccan, Spanish, German, Brazilian, Other
+10. Dietary tags (all that apply based on ingredients). Choose from: Keto, Vegan, Vegetarian, Gluten-Free, Dairy-Free, Nut-Free, Paleo, Low-Carb, Whole30, Halal, Kosher. Use empty array if none apply.
 
 Return the data in the following JSON format:
 {
@@ -40,7 +42,9 @@ Return the data in the following JSON format:
       "cookTime": "20 minutes",
       "totalTime": "30 minutes",
       "servings": 4,
-      "notes": "Any additional notes or tips"
+      "notes": "Any additional notes or tips",
+      "cuisine": "Italian",
+      "dietaryTags": ["Gluten-Free", "Vegetarian"]
     }
   ],
   "pageNumber": "page number if visible",
@@ -56,6 +60,9 @@ IMPORTANT RULES:
 - If ingredients are unclear, mark with "notes": "quantity unclear"
 - If multiple recipes on one page, extract ALL of them
 - "servings" MUST be a single integer number (e.g., 4, not "4-6 servings" or "2 pizzas")
+- Always detect cuisine type from the recipe name, ingredients, and cooking style
+- Always check for dietary tags based on the ingredients used
+- "dietaryTags" must be an array (use empty array [] if no special dietary categories apply)
 - Return ONLY valid JSON, no additional text`;
 
 const FRIDGE_PROMPT = `You are a food identification assistant. Analyze this refrigerator/fridge image and identify ALL visible food items and ingredients.

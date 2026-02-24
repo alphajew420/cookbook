@@ -122,6 +122,9 @@ const cacheKeys = {
   fridgeInventory: (userId) => `user:${userId}:fridge`,
   recipeMatches: (userId, cookbookId = 'all') => `user:${userId}:matches:${cookbookId}`,
   recipe: (recipeId) => `recipe:${recipeId}`,
+  recommendedRecipes: (userId) => `user:${userId}:recommended`,
+  hotRecipes: (cuisine) => `global:hot_recipes:${cuisine || 'all'}`,
+  cuisineCategories: () => 'global:cuisine_categories',
 };
 
 // Cache TTL settings (in seconds)
@@ -130,6 +133,9 @@ const cacheTTL = {
   fridge: 1800, // 30 minutes
   matches: 600, // 10 minutes
   recipe: 3600, // 1 hour
+  recommended: 300, // 5 minutes
+  hot: 600, // 10 minutes
+  categories: 3600, // 1 hour
 };
 
 module.exports = {

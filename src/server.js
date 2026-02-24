@@ -195,6 +195,35 @@ app.get('/migrate-fridge-scan-history', async (req, res) => {
   }
 });
 
+// Cuisine tags migration endpoint
+app.get('/migrate-cuisine-tags', async (req, res) => {
+  try {
+    const { pool } = require('./database/db');
+    const client = await pool.connect();
+
+    try {
+      logger.info('Running cuisine tags migration');
+
+      await client.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cuisine VARCHAR(50)`);
+      await client.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS dietary_tags TEXT[]`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_recipes_cuisine ON recipes(cuisine)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_recipes_dietary_tags ON recipes USING GIN(dietary_tags)`);
+
+      logger.info('Cuisine tags migration completed');
+
+      res.status(200).json({
+        success: true,
+        message: 'Cuisine tags migration completed successfully',
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    logger.error('Migration failed', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Recipe matching migration endpoint
 app.get('/migrate-recipe-matching', async (req, res) => {
   try {

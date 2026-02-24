@@ -54,7 +54,25 @@ const handleUploadError = (err, req, res, next) => {
   next(err);
 };
 
+// PDF-specific upload configuration
+const pdfFileFilter = (req, file, cb) => {
+  if (file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new AppError('Invalid file type. Only PDF files are allowed.', 422, 'INVALID_FILE'), false);
+  }
+};
+
+const uploadPdf = multer({
+  storage: storage,
+  fileFilter: pdfFileFilter,
+  limits: {
+    fileSize: parseInt(process.env.MAX_PDF_SIZE) || 52428800, // 50MB default
+  },
+});
+
 module.exports = {
   upload,
+  uploadPdf,
   handleUploadError,
 };
