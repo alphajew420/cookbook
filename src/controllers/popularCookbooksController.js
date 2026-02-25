@@ -1,11 +1,11 @@
 const { query } = require('../database/db');
-const { getSignedUrl } = require('../utils/s3');
 const { cache } = require('../utils/redis');
 const logger = require('../utils/logger');
 
 /**
  * Get popular cookbooks based on match frequency across all users,
  * falling back to recent uploads when not enough popular data exists.
+ * Uses Amazon product images/links from Keepa instead of user-generated covers.
  */
 const getPopularCookbooks = async (req, res, next) => {
   try {
@@ -19,12 +19,16 @@ const getPopularCookbooks = async (req, res, next) => {
       return res.status(200).json({ success: true, data: cached });
     }
 
+    const amazonTag = process.env.AMAZON_ASSOCIATES_TAG || 'cookbookapp-20';
+
     // Step 1: Popular cookbooks by match activity
     const popularQuery = `
       SELECT
         c.id as cookbook_id,
         c.name as cookbook_name,
-        c.cover_image_url,
+        c.amazon_asin,
+        c.amazon_image_url,
+        c.amazon_product_url,
         COUNT(DISTINCT r.id) as recipe_count,
         COUNT(rm.id) as total_matches,
         COUNT(DISTINCT mj.user_id) as unique_users
@@ -33,7 +37,7 @@ const getPopularCookbooks = async (req, res, next) => {
       JOIN recipe_matches rm ON r.id = rm.recipe_id
       JOIN match_jobs mj ON rm.match_job_id = mj.id
       WHERE rm.created_at >= NOW() - ($1 || ' days')::INTERVAL
-      GROUP BY c.id, c.name, c.cover_image_url
+      GROUP BY c.id, c.name, c.amazon_asin, c.amazon_image_url, c.amazon_product_url
       ORDER BY total_matches DESC, unique_users DESC
       LIMIT $2`;
 
@@ -50,7 +54,9 @@ const getPopularCookbooks = async (req, res, next) => {
         SELECT
           c.id as cookbook_id,
           c.name as cookbook_name,
-          c.cover_image_url,
+          c.amazon_asin,
+          c.amazon_image_url,
+          c.amazon_product_url,
           COUNT(r.id) as recipe_count,
           0 as total_matches,
           0 as unique_users
@@ -67,7 +73,7 @@ const getPopularCookbooks = async (req, res, next) => {
       }
 
       recentQuery += `
-        GROUP BY c.id, c.name, c.cover_image_url
+        GROUP BY c.id, c.name, c.amazon_asin, c.amazon_image_url, c.amazon_product_url
         HAVING COUNT(r.id) > 0
         ORDER BY c.created_at DESC
         LIMIT $1`;
@@ -76,30 +82,16 @@ const getPopularCookbooks = async (req, res, next) => {
     }
 
     const allCookbooks = [...popularCookbooks, ...recentCookbooks];
-    const amazonTag = process.env.AMAZON_ASSOCIATES_TAG || 'cookbookapp-20';
 
-    // Add signed URLs and Amazon links
-    const cookbooks = await Promise.all(
-      allCookbooks.map(async (row) => {
-        let signedCoverUrl = null;
-        if (row.cover_image_url) {
-          try {
-            signedCoverUrl = await getSignedUrl(row.cover_image_url);
-          } catch (e) {
-            logger.warn('Failed to get signed URL for popular cookbook', { cookbookId: row.cookbook_id });
-          }
-        }
-        return {
-          cookbookId: row.cookbook_id,
-          cookbookName: row.cookbook_name,
-          coverImageUrl: signedCoverUrl,
-          recipeCount: parseInt(row.recipe_count),
-          totalMatches: parseInt(row.total_matches),
-          uniqueUsers: parseInt(row.unique_users),
-          amazonLink: `https://www.amazon.com/s?k=${encodeURIComponent(row.cookbook_name)}&tag=${amazonTag}`,
-        };
-      })
-    );
+    const cookbooks = allCookbooks.map((row) => ({
+      cookbookId: row.cookbook_id,
+      cookbookName: row.cookbook_name,
+      amazonImageUrl: row.amazon_image_url || null,
+      amazonProductUrl: row.amazon_product_url || `https://www.amazon.com/s?k=${encodeURIComponent(row.cookbook_name)}&tag=${amazonTag}`,
+      recipeCount: parseInt(row.recipe_count),
+      totalMatches: parseInt(row.total_matches),
+      uniqueUsers: parseInt(row.unique_users),
+    }));
 
     const responseData = { cookbooks };
 

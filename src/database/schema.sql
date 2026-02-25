@@ -224,6 +224,11 @@ CREATE INDEX IF NOT EXISTS idx_recipe_matches_match_job_id ON recipe_matches(mat
 CREATE INDEX IF NOT EXISTS idx_recipe_matches_recipe_id ON recipe_matches(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_matches_percentage ON recipe_matches(match_percentage DESC);
 
+-- Amazon book data for cookbooks (via Keepa API)
+ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_asin VARCHAR(20);
+ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_image_url TEXT;
+ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_product_url TEXT;
+
 -- Cuisine and dietary tags for recipes
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cuisine VARCHAR(50);
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS dietary_tags TEXT[];

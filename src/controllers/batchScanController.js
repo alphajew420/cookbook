@@ -4,6 +4,7 @@ const { AppError, NotFoundError, ForbiddenError } = require('../middleware/error
 const { addCookbookJob } = require('../services/queue');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const { lookupAndStoreCookbook } = require('../services/keepaService');
 
 /**
  * Batch cookbook scan - accepts multiple images for one cookbook
@@ -82,6 +83,9 @@ const scanCookbookBatch = async (req, res, next) => {
         );
         cookbookId = cookbookResult.rows[0].id;
         logger.info('Created new cookbook', { cookbookId, cookbookName });
+
+        // Fire-and-forget Amazon book lookup via Keepa
+        lookupAndStoreCookbook(cookbookId, cookbookName || 'My Cookbook').catch(() => {});
       }
     }
 

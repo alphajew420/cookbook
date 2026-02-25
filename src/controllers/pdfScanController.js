@@ -5,6 +5,7 @@ const { addCookbookJob } = require('../services/queue');
 const { extractPagesAsImages, getPdfPageCount } = require('../services/pdfProcessor');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const { lookupAndStoreCookbook } = require('../services/keepaService');
 
 /**
  * Scan cookbook from PDF upload
@@ -88,6 +89,9 @@ const scanCookbookPdf = async (req, res, next) => {
           [userId, cookbookName || 'My Cookbook', imageUrls[0]]
         );
         cookbookId = cookbookResult.rows[0].id;
+
+        // Fire-and-forget Amazon book lookup via Keepa
+        lookupAndStoreCookbook(cookbookId, cookbookName || 'My Cookbook').catch(() => {});
       }
     }
 
