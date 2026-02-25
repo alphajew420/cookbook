@@ -228,6 +228,41 @@ CREATE INDEX IF NOT EXISTS idx_recipe_matches_percentage ON recipe_matches(match
 ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_asin VARCHAR(20);
 ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_image_url TEXT;
 ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_product_url TEXT;
+ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_match_confidence INTEGER;
+ALTER TABLE cookbooks ADD COLUMN IF NOT EXISTS amazon_match_status VARCHAR(50);
+CREATE INDEX IF NOT EXISTS idx_cookbooks_amazon_match_status ON cookbooks(amazon_match_status);
+
+-- Amazon lookup jobs table
+CREATE TABLE IF NOT EXISTS amazon_lookup_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cookbook_id UUID NOT NULL REFERENCES cookbooks(id) ON DELETE CASCADE,
+  cookbook_name VARCHAR(255) NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'pending',
+  match_confidence INTEGER,
+  match_status VARCHAR(50),
+  suggestions JSONB,
+  selected_asin VARCHAR(20),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  started_at TIMESTAMP WITH TIME ZONE,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  processing_time_ms INTEGER,
+  error_message TEXT,
+  error_code VARCHAR(100),
+
+  CONSTRAINT amazon_lookup_jobs_status_check CHECK (
+    status IN ('pending', 'processing', 'completed', 'failed', 'pending_review')
+  ),
+  CONSTRAINT amazon_lookup_jobs_match_status_check CHECK (
+    match_status IN ('auto_matched', 'user_selected', 'no_match', 'pending_review', 'failed')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_amazon_lookup_jobs_user_id ON amazon_lookup_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_amazon_lookup_jobs_cookbook_id ON amazon_lookup_jobs(cookbook_id);
+CREATE INDEX IF NOT EXISTS idx_amazon_lookup_jobs_status ON amazon_lookup_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_amazon_lookup_jobs_match_status ON amazon_lookup_jobs(match_status);
+CREATE INDEX IF NOT EXISTS idx_amazon_lookup_jobs_created_at ON amazon_lookup_jobs(created_at DESC);
 
 -- Cuisine and dietary tags for recipes
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cuisine VARCHAR(50);

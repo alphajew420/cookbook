@@ -17,6 +17,7 @@ const redisConfig = process.env.REDIS_URL
 const cookbookQueue = new Bull('cookbook-scans', redisConfig);
 const fridgeQueue = new Bull('fridge-scans', redisConfig);
 const matchQueue = new Bull('recipe-matches', redisConfig);
+const amazonLookupQueue = new Bull('amazon-lookups', redisConfig);
 
 // Queue event listeners
 cookbookQueue.on('error', (error) => {
@@ -47,6 +48,17 @@ matchQueue.on('error', (error) => {
 
 matchQueue.on('failed', (job, error) => {
   logger.error('Match job failed', {
+    jobId: job.id,
+    error: error.message,
+  });
+});
+
+amazonLookupQueue.on('error', (error) => {
+  logger.error('Amazon lookup queue error', { error: error.message });
+});
+
+amazonLookupQueue.on('failed', (job, error) => {
+  logger.error('Amazon lookup job failed', {
     jobId: job.id,
     error: error.message,
   });
@@ -122,6 +134,29 @@ const addMatchJob = async (jobData) => {
 };
 
 /**
+ * Add Amazon lookup job to queue
+ */
+const addAmazonLookupJob = async (jobData) => {
+  const job = await amazonLookupQueue.add(jobData, {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: false,
+    removeOnFail: false,
+  });
+
+  logger.info('Amazon lookup job added to queue', {
+    jobId: job.id,
+    cookbookId: jobData.cookbookId,
+    bookTitle: jobData.bookTitle,
+  });
+
+  return job.id;
+};
+
+/**
  * Get job status
  */
 const getJobStatus = async (queueType, jobId) => {
@@ -129,6 +164,7 @@ const getJobStatus = async (queueType, jobId) => {
   if (queueType === 'cookbook') queue = cookbookQueue;
   else if (queueType === 'fridge') queue = fridgeQueue;
   else if (queueType === 'match') queue = matchQueue;
+  else if (queueType === 'amazon') queue = amazonLookupQueue;
   else return null;
 
   const job = await queue.getJob(jobId);
@@ -157,8 +193,10 @@ module.exports = {
   cookbookQueue,
   fridgeQueue,
   matchQueue,
+  amazonLookupQueue,
   addCookbookJob,
   addFridgeJob,
   addMatchJob,
+  addAmazonLookupJob,
   getJobStatus,
 };

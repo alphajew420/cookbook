@@ -1,7 +1,7 @@
 const { uploadImage, extractKeyFromUrl } = require('../utils/s3');
 const { query } = require('../database/db');
 const { AppError, NotFoundError, ForbiddenError } = require('../middleware/errorHandler');
-const { addCookbookJob } = require('../services/queue');
+const { addCookbookJob, addAmazonLookupJob } = require('../services/queue');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { lookupAndStoreCookbook } = require('../services/keepaService');
@@ -84,8 +84,21 @@ const scanCookbookBatch = async (req, res, next) => {
         cookbookId = cookbookResult.rows[0].id;
         logger.info('Created new cookbook', { cookbookId, cookbookName });
 
-        // Fire-and-forget Amazon book lookup via Keepa
-        lookupAndStoreCookbook(cookbookId, cookbookName || 'My Cookbook').catch(() => {});
+        // Queue Amazon book lookup via Keepa
+        const amazonJobId = uuidv4();
+        await query(
+          `INSERT INTO amazon_lookup_jobs (id, user_id, cookbook_id, cookbook_name, status)
+           VALUES ($1, $2, $3, $4, 'pending')`,
+          [amazonJobId, userId, cookbookId, cookbookName || 'My Cookbook']
+        );
+        addAmazonLookupJob({
+          jobId: amazonJobId,
+          userId,
+          cookbookId,
+          bookTitle: cookbookName || 'My Cookbook',
+        }).catch((error) => {
+          logger.error('Failed to queue Amazon lookup', { cookbookId, error: error.message });
+        });
       }
     }
 

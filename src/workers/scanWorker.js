@@ -335,6 +335,7 @@ fridgeQueue.process(async (job) => {
 });
 
 require('./matchWorker');
+require('./amazonLookupWorker');
 
 logger.info('Scan worker started');
 logger.info('Listening for cookbook, fridge scan, and recipe match jobs');

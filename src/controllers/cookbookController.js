@@ -24,8 +24,9 @@ const getCookbooks = async (req, res, next) => {
     
     // Get cookbooks with recipe count
     const result = await query(
-      `SELECT 
+      `SELECT
         c.id, c.name, c.cover_image_url, c.scanned_pages, c.created_at, c.updated_at,
+        c.amazon_match_status, c.amazon_match_confidence,
         COUNT(r.id) as recipe_count
        FROM cookbooks c
        LEFT JOIN recipes r ON c.id = r.cookbook_id
@@ -53,6 +54,8 @@ const getCookbooks = async (req, res, next) => {
         coverImageUrl: await getSignedUrl(row.cover_image_url),
         scannedPages: row.scanned_pages,
         recipeCount: parseInt(row.recipe_count),
+        amazonMatchStatus: row.amazon_match_status,
+        amazonMatchConfidence: row.amazon_match_confidence,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }))
@@ -95,7 +98,8 @@ const getCookbook = async (req, res, next) => {
     
     // Get cookbook
     const cookbookResult = await query(
-      `SELECT id, user_id, name, cover_image_url, scanned_pages, created_at, updated_at
+      `SELECT id, user_id, name, cover_image_url, scanned_pages, created_at, updated_at,
+              amazon_match_status, amazon_match_confidence
        FROM cookbooks
        WHERE id = $1`,
       [id]
@@ -130,6 +134,8 @@ const getCookbook = async (req, res, next) => {
       name: cookbook.name,
       coverImageUrl: await getSignedUrl(cookbook.cover_image_url),
       scannedPages: cookbook.scanned_pages,
+      amazonMatchStatus: cookbook.amazon_match_status,
+      amazonMatchConfidence: cookbook.amazon_match_confidence,
       createdAt: cookbook.created_at,
       updatedAt: cookbook.updated_at,
       recipes: recipesResult.rows.map(r => ({
