@@ -6,6 +6,7 @@ const {
   getCookbookRecipes,
   updateCookbook,
   deleteCookbook,
+  uploadCoverImage,
 } = require('../controllers/cookbookController');
 const { getPopularCookbooks } = require('../controllers/popularCookbooksController');
 const {
@@ -16,6 +17,7 @@ const {
 } = require('../controllers/amazonLookupController');
 const { authenticate } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+const { upload } = require('../middleware/upload');
 
 // Popular cookbooks across all users (must be before /:id)
 router.get('/popular', authenticate, getPopularCookbooks);
@@ -34,6 +36,9 @@ router.post('/:id/amazon-lookup', authenticate, createAmazonLookup);
 router.get('/:id/amazon-lookup', authenticate, getAmazonLookup);
 router.post('/:id/amazon-lookup/select', authenticate, selectAmazonBook);
 router.post('/:id/amazon-lookup/skip', authenticate, skipAmazonLookup);
+
+// Upload cover image
+router.post('/:id/cover-image', authenticate, upload.single('image'), uploadCoverImage);
 
 // Update cookbook
 router.put('/:id', authenticate, validate(schemas.updateCookbook), updateCookbook);

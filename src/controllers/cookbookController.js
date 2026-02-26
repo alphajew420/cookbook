@@ -1,7 +1,7 @@
 const { query } = require('../database/db');
 const { cache, cacheKeys, cacheTTL } = require('../utils/redis');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../middleware/errorHandler');
-const { addSignedUrlsToRecipes, getSignedUrl } = require('../utils/s3');
+const { addSignedUrlsToRecipes, getSignedUrl, uploadImage } = require('../utils/s3');
 const logger = require('../utils/logger');
 
 /**
@@ -10,38 +10,57 @@ const logger = require('../utils/logger');
 const getCookbooks = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 20, sortBy = 'created_at', order = 'desc' } = req.query;
-    
+    const { page = 1, limit = 20, sortBy = 'created_at', order = 'desc', search } = req.query;
+
     const offset = (page - 1) * limit;
-    
-    // Try cache first
-    const cacheKey = `${cacheKeys.userCookbooks(userId)}:${page}:${limit}:${sortBy}:${order}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      logger.debug('Returning cached cookbooks', { userId });
-      return res.status(200).json(cached);
+
+    // Try cache first (skip cache if searching)
+    const cacheKey = `${cacheKeys.userCookbooks(userId)}:${page}:${limit}:${sortBy}:${order}:${search || ''}`;
+    if (!search) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        logger.debug('Returning cached cookbooks', { userId });
+        return res.status(200).json(cached);
+      }
     }
-    
-    // Get cookbooks with recipe count
-    const result = await query(
-      `SELECT
+
+    // Build query with optional search
+    let queryText = `SELECT
         c.id, c.name, c.cover_image_url, c.scanned_pages, c.created_at, c.updated_at,
         c.amazon_match_status, c.amazon_match_confidence,
         COUNT(r.id) as recipe_count
        FROM cookbooks c
        LEFT JOIN recipes r ON c.id = r.cookbook_id
-       WHERE c.user_id = $1
+       WHERE c.user_id = $1`;
+
+    const params = [userId];
+    let paramCount = 2;
+
+    if (search) {
+      queryText += ` AND c.name ILIKE $${paramCount}`;
+      params.push(`%${search}%`);
+      paramCount++;
+    }
+
+    queryText += `
        GROUP BY c.id
        ORDER BY c.${sortBy} ${order}
-       LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
-    );
-    
-    // Get total count
-    const countResult = await query(
-      'SELECT COUNT(*) FROM cookbooks WHERE user_id = $1',
-      [userId]
-    );
+       LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+
+    params.push(limit, offset);
+
+    const result = await query(queryText, params);
+
+    // Get total count with search filter
+    let countQuery = 'SELECT COUNT(*) FROM cookbooks WHERE user_id = $1';
+    const countParams = [userId];
+
+    if (search) {
+      countQuery += ' AND name ILIKE $2';
+      countParams.push(`%${search}%`);
+    }
+
+    const countResult = await query(countQuery, countParams);
     
     const total = parseInt(countResult.rows[0].count);
     const totalPages = Math.ceil(total / limit);
@@ -165,34 +184,46 @@ const getCookbookRecipes = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
-    
+    const { page = 1, limit = 20, search } = req.query;
+
     const offset = (page - 1) * limit;
-    
+
     // Verify cookbook ownership
     const cookbookResult = await query(
       'SELECT user_id FROM cookbooks WHERE id = $1',
       [id]
     );
-    
+
     if (cookbookResult.rows.length === 0) {
       throw new NotFoundError('Cookbook not found');
     }
-    
+
     if (cookbookResult.rows[0].user_id !== userId) {
       throw new ForbiddenError('Not authorized to access this cookbook');
     }
-    
-    // Get recipes with ingredients and instructions
-    const recipesResult = await query(
-      `SELECT 
+
+    // Build query with optional search
+    let queryText = `SELECT
         r.id, r.name, r.prep_time, r.cook_time, r.total_time, r.servings, r.notes, r.original_image_url, r.created_at
        FROM recipes r
-       WHERE r.cookbook_id = $1
+       WHERE r.cookbook_id = $1`;
+
+    const params = [id];
+    let paramCount = 2;
+
+    if (search) {
+      queryText += ` AND r.name ILIKE $${paramCount}`;
+      params.push(`%${search}%`);
+      paramCount++;
+    }
+
+    queryText += `
        ORDER BY r.created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [id, limit, offset]
-    );
+       LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+
+    params.push(limit, offset);
+
+    const recipesResult = await query(queryText, params);
     
     const recipes = [];
     for (const recipe of recipesResult.rows) {
@@ -231,13 +262,18 @@ const getCookbookRecipes = async (req, res, next) => {
     
     // Add signed URLs to all recipes
     const recipesWithSignedUrls = await addSignedUrlsToRecipes(recipes);
-    
-    // Get total count
-    const countResult = await query(
-      'SELECT COUNT(*) FROM recipes WHERE cookbook_id = $1',
-      [id]
-    );
-    
+
+    // Get total count with search filter
+    let countQuery = 'SELECT COUNT(*) FROM recipes WHERE cookbook_id = $1';
+    const countParams = [id];
+
+    if (search) {
+      countQuery += ' AND name ILIKE $2';
+      countParams.push(`%${search}%`);
+    }
+
+    const countResult = await query(countQuery, countParams);
+
     const total = parseInt(countResult.rows[0].count);
     const totalPages = Math.ceil(total / limit);
     
@@ -372,10 +408,66 @@ const deleteCookbook = async (req, res, next) => {
   }
 };
 
+/**
+ * Upload cookbook cover image
+ */
+const uploadCoverImage = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    if (!req.file) {
+      throw new ValidationError('No image file provided');
+    }
+
+    // Verify ownership
+    const checkResult = await query(
+      'SELECT user_id FROM cookbooks WHERE id = $1',
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      throw new NotFoundError('Cookbook not found');
+    }
+
+    if (checkResult.rows[0].user_id !== userId) {
+      throw new ForbiddenError('Not authorized to update this cookbook');
+    }
+
+    // Upload image to R2
+    const imageUrl = await uploadImage(req.file.buffer, 'cookbook', req.file.mimetype);
+
+    // Update cookbook
+    const result = await query(
+      `UPDATE cookbooks
+       SET cover_image_url = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING id, name, cover_image_url, updated_at`,
+      [imageUrl, id]
+    );
+
+    // Invalidate cache
+    await cache.del(cacheKeys.cookbook(id));
+    await cache.delPattern(`user:${userId}:cookbooks:*`);
+
+    logger.info('Cookbook cover image updated', { cookbookId: id, userId });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        coverImageUrl: await getSignedUrl(result.rows[0].cover_image_url),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCookbooks,
   getCookbook,
   getCookbookRecipes,
   updateCookbook,
   deleteCookbook,
+  uploadCoverImage,
 };
